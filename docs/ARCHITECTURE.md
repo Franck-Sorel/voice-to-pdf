@@ -3,10 +3,11 @@
 ## 1. Big picture
 
 Voice to PDF is a **single-APK, offline-first Android app**. All heavy work
-happens on-device: audio capture, PCM decoding, Whisper inference, and PDF
-rendering. The architecture is deliberately boring — small, layered, and easy
-to test — because the hard problems here are *performance on 4 GB devices* and
-*native integration*, not architectural novelty.
+happens on-device: audio capture, PCM decoding, speech inference
+(sherpa-onnx), LLM planning (MVP 2/3), and PDF rendering. The architecture is
+deliberately boring — small, layered, and easy to test — because the hard
+problems here are *performance on 4 GB devices* and *native integration*, not
+architectural novelty.
 
 ```mermaid
 flowchart TB
@@ -32,12 +33,12 @@ flowchart TB
         Prefs["Settings (SharedPreferences)"]
         Recorder["AndroidAudioRecorder\n(MediaRecorder)"]
         PCM["MediaCodecPcmDecoder"]
-        Whisper["WhisperNative (JNI)\n+ WhisperTranscriber"]
+        Speech["SherpaOnnxStt\n(sherpa-onnx AAR)"]
         PDF["AndroidPdfExporter\n(PdfDocument)"]
     end
-    subgraph Native["Native (built separately)"]
-        libwhisper["libwhisper.so\n(whisper.cpp)"]
-        model["GGML model file"]
+    subgraph Native["ML runtimes (bundled)"]
+        onnx["sherpa-onnx\n(Whisper .onnx + Piper)"]
+        llm["llama.cpp\n(Phi-3-mini / Gemma-2-2B,\nMVP 2/3)"]
     end
 
     Home --> HomeVM
@@ -45,16 +46,15 @@ flowchart TB
     Session --> SessionVM
     Settings --> SettingsVM
     HomeVM --> Recorder
-    HomeVM --> Whisper
+    HomeVM --> Speech
     HomeVM --> Room
     HomeVM --> Prefs
     SessionsVM --> Room
     SessionVM --> Room
     SessionVM --> PDF
     SettingsVM --> Prefs
-    Whisper --> PCM
-    Whisper --> libwhisper
-    libwhisper --> model
+    Speech --> PCM
+    Speech --> onnx
 ```
 
 ## 2. Layer rules
@@ -78,7 +78,7 @@ Dependency direction is always inward: `ui → data → core`.
 2. Stop            AudioRecorder.stop() -> durationMs + file
 3. Persist         Session(TRANSCRIBING) inserted into Room
 4. Decode          MediaCodecPcmDecoder -> 16 kHz mono ShortArray
-5. Infer           WhisperNative.whisper_transcribe(ctx, pcm)
+5. Infer           sherpa-onnx OfflineRecognizer (Whisper base .onnx)
 6. Store           Session(READY, transcript)
 7. Edit            SessionScreen OutlinedTextField (draft)
 8. Export          PdfExporter.export(request, contentUri) -> A4 PDF
@@ -102,7 +102,7 @@ flowchart LR
     EXT --> MC["MediaCodec\ndecoder -> PCM16"]
     MC --> MIX["stereo -> mono\n(average channels)"]
     MIX --> RES["resample -> 16 kHz\n(TODO, see below)"]
-    RES --> W["WhisperNative\ntranscribe(ctx, ShortArray)"]
+    RES --> W["sherpa-onnx\nOfflineRecognizer\n(Whisper base)"]
 ```
 
 - Our recorder already outputs 16 kHz mono AAC, so decode is a passthrough.
@@ -112,6 +112,8 @@ flowchart LR
   self-contained ~50-line function (linear/SoX-style interpolation) and is the
   first natural implementation task.
 - Whisper expects raw 16-bit little-endian mono PCM at 16 kHz.
+- Speech runs on **sherpa-onnx** (Whisper `base` exported to ONNX) — see
+  `docs/DECISIONS.md` ADR-009 and `ml/README.md`.
 
 ## 5. Storage schema
 
@@ -144,7 +146,8 @@ Room schema JSON is exported to `app/schemas/` (append-only — see
 | UI | Main | Compose |
 | Recording | Main (MediaRecorder does its own I/O) | `AudioRecorder` |
 | PCM decode | Background | `Dispatchers.Default` via `withContext` |
-| Whisper inference | Background, CPU | `Dispatchers.Default`; native call is blocking |
+| Speech inference (sherpa-onnx) | Background, CPU | `Dispatchers.Default`; blocking native call |
+| LLM planning (MVP 2/3) | Background, CPU | llama.cpp, loaded on demand |
 | Room | Main-safe | Suspend DAO + Flow |
 | PDF render + disk write | Background | `Dispatchers.IO` |
 
@@ -154,11 +157,13 @@ hop off the main thread. ViewModels launch in `viewModelScope`.
 ## 7. Offline-first design
 
 - No permissions for network. No HTTP client dependency at all in MVP 1.
-- Model files live in `filesDir/models/<id>.bin`. For MVP 1 they are bundled
-  into `assets/` at build time; for MVP 2 (larger 1B/3B LLMs) they become a
-  one-time optional download with a clear consent screen, then work offline.
+- Model files live in `filesDir/models/`: Whisper/Piper `.onnx` for
+  sherpa-onnx, GGUF for llama.cpp. MVP 1 bundles the speech models into the
+  APK; larger LLM models (MVP 2/3) become a one-time optional download with a
+  clear consent screen, then work offline (see `ml/README.md`).
 - If the device has < 4 GB RAM at launch, show a "requires 4 GB" gate screen
-  (risk mitigation).
+  (risk mitigation). The MVP 3 agent additionally swaps Phi-3-mini for
+  Gemma-2-2B and load/unloads the LLM on demand (see §10).
 
 ## 8. MVP 2 extension points (no re-architecture needed)
 
@@ -169,12 +174,102 @@ hop off the main thread. ViewModels launch in `viewModelScope`.
 - MVP 2 can ship as a **separate APK or in-app module**; the single `:app`
   module today is fine to start, and can be split into `:app`, `:core`,
   `:recognition`, `:pdf` feature modules later without touching domain code.
+- **MVP 3 (voice agent)** is a further additive module: `:agent` with the
+  AccessibilityService, the LLM planner, and the TTS bridge. It reuses
+  `:core` interfaces (same `Transcriber` shape for STT) and Room for action
+  logs. See §10.
 
 ## 9. Security & privacy
 
 - Default path: **zero data leaves the device**.
-- RECORD_AUDIO is the only runtime permission.
+- RECORD_AUDIO is the only runtime permission in MVP 1.
 - Import/export use Storage Access Framework (scoped storage, no broad storage
   permission).
 - The optional cloud "enhance" button (MVP 2) must show explicit "uses your
   data over the network" consent before any upload.
+- The MVP 3 AccessibilityService is a sensitive, visible capability: it must
+  be disclosed in-app, and every sensitive action (send message, call, open
+  account) requires a per-action confirmation dialog (see PRD §7.5).
+
+---
+
+## 10. MVP 3 — voice agent (additive module)
+
+The agent is a **separate module/APK** that hears a command, plans one action
+with an on-device LLM, executes it through AccessibilityService, and confirms
+by voice. It shares the speech runtime and Room from MVP 1 but is fully
+optional — the app works without it.
+
+### 10.1 Agent loop
+
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│                        ANDROID APP (Kotlin)                          │
+│                                                                      │
+│  ┌─────────────┐     ┌──────────────────┐     ┌──────────────────┐  │
+│  │  sherpa-onnx │     │   llama.cpp      │     │  Accessibility   │  │
+│  │  (STT)      │────►│   (LLM planner)  │────►│  Service         │  │
+│  │  Whisper     │     │   Phi-3-mini     │     │  (executor)      │  │
+│  │  base .onnx  │     │   Q4, 3.8B      │     │  tap/scroll/type │  │
+│  └──────┬──────┘     └────────┬─────────┘     └────────┬─────────┘  │
+│         │                     │                         │            │
+│         │              ┌──────▼───────┐                  │            │
+│         │              │  Tool calls  │                  │            │
+│         │              │  - tap(x,y)  │                  │            │
+│         │              │  - type(str) │                  │            │
+│         │              │  - scroll()  │                  │            │
+│         │              │  - openApp() │                  │            │
+│         │              └──────────────┘                  │            │
+│         │                                                │            │
+│         │         ┌──────────────────┐                   │            │
+│         │         │  sherpa-onnx     │◄──────────────────┘            │
+│         │         │  (TTS)           │   "Done. Email sent."          │
+│         │         │  Piper .onnx     │                                │
+│         │         └────────┬─────────┘                                │
+│         │                  │                                          │
+│         ▼                  ▼                                          │
+│    [Microphone]        [Speaker]                                     │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### 10.2 Resource budget on a 4 GB RAM device
+
+| Component | RAM | Notes |
+|-----------|-----|-------|
+| Android OS + system | ~1.2 GB | Baseline |
+| sherpa-onnx STT (Whisper base) | ~200 MB | Loaded only during transcription |
+| sherpa-onnx TTS (Piper) | ~150 MB | Loaded only during speech |
+| llama.cpp (Phi-3-mini Q4) | ~2.5 GB | **Bottleneck** |
+| App UI + AccessibilityService | ~150 MB | |
+| **Total peak** | **~4.2 GB** | ⚠️ Tight — see mitigation |
+
+**Mitigations (4 GB devices):** use Gemma-2-2B Q4 (~1.5 GB) → ~3.2 GB total;
+load/unload the LLM on demand; load STT/TTS independently of the LLM; on
+6 GB devices default to Phi-3-mini with Gemma-2-2B as the "low-RAM" option.
+
+### 10.3 Key interfaces (sketch)
+
+```text
+interface VoiceAgent {
+    suspend fun run(command: String): AgentResult   // plan -> confirm -> execute
+}
+
+interface ToolExecutor {          // implemented by the AccessibilityService
+    suspend fun openApp(packageName: String): Result<Unit>
+    suspend fun tap(x: Int, y: Int): Result<Unit>
+    suspend fun typeText(text: String): Result<Unit>
+    suspend fun scroll(direction: Direction): Result<Unit>
+}
+
+interface TtsEngine {             // Piper via sherpa-onnx
+    suspend fun speak(text: String)
+}
+```
+
+### 10.4 Hard boundary
+
+The agent only performs UI actions (tap, type, scroll, open app). It does NOT
+access contacts, read SMS content, or make phone calls without an explicit
+per-action user confirmation dialog: "Agent wants to send message to X.
+Allow?" — enforced in `VoiceAgent.run` before any privileged `ToolExecutor`
+call.

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Simple document + microphone mark for the launcher. -->
+    <group android:scaleX="0.5"
+        android:scaleY="0.5"
+        android:translateX="27"
+        android:translateY="27">
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M22,18 L50,18 A2,2 0 0 1 52,20 L52,74 A2,2 0 0 1 50,76 L22,76 A2,2 0 0 1 20,74 L20,20 A2,2 0 0 1 22,18 Z" />
+        <path
+            android:fillColor="#1B5E20"
+            android:pathData="M36,32 L36,60 A8,8 0 0 0 52,60 L52,32 A8,8 0 0 0 36,32 Z M36,22 L36,26 A12,12 0 0 1 52,26 L52,22 A12,12 0 0 0 36,22 Z" />
+    </group>
+</vector>

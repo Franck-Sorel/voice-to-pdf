@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run unit tests
+        run: ./gradlew test
+
+      - name: Lint
+        run: ./gradlew lintDebug
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Check APK size budget (<= 80 MB)
+        run: |
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -n1)
+          SIZE=$(stat -c%s "$APK")
+          echo "APK size: $((SIZE / 1024 / 1024)) MB ($SIZE bytes)"
+          test "$SIZE" -le $((80 * 1024 * 1024))
+
+      - name: Fail on INTERNET permission (offline-first guarantee)
+        run: |
+          if grep -q 'android.permission.INTERNET' app/src/main/AndroidManifest.xml; then
+            echo "::error::INTERNET permission must not be declared (offline-first)."
+            exit 1
+          fi

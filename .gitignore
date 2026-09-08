@@ -1,0 +1,36 @@
+# Gradle
+.gradle/
+build/
+captures/
+local.properties
+
+# Android
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+app/build/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.code-workspace
+
+# Kotlin / Java
+*.log
+.kotlin/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Keystores (never commit signing keys)
+*.jks
+*.keystore
+keystore.properties
+
+# Local env / secrets
+.env
+secrets.properties

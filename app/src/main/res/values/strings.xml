@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Voice to PDF</string>
+
+    <string name="nav_home">Home</string>
+    <string name="nav_sessions">Sessions</string>
+    <string name="nav_settings">Settings</string>
+
+    <string name="home_record_button">Start recording</string>
+    <string name="home_stop_button">Stop &amp; transcribe</string>
+    <string name="home_import_audio">Import audio file</string>
+    <string name="home_recording_in_progress">Recording…</string>
+
+    <string name="sessions_empty">No sessions yet.\nRecord a lecture to get started.</string>
+
+    <string name="session_edit_hint">Edit the transcript…</string>
+    <string name="session_export_pdf">Export PDF</string>
+    <string name="session_delete">Delete</string>
+
+    <string name="settings_model_title">Whisper model</string>
+    <string name="settings_model_tiny">Tiny — fastest, ~39 MB, less accurate</string>
+    <string name="settings_model_base">Base — balanced (default), ~74 MB</string>
+    <string name="settings_model_small">Small — best accuracy, ~244 MB, slow</string>
+    <string name="settings_language_title">Transcript language</string>
+    <string name="settings_offline_note">All processing happens on this device. No internet required.</string>
+</resources>

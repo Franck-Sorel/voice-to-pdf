@@ -25,15 +25,16 @@ Budget breakdown (indicative):
 | Component | Size |
 |-----------|------|
 | App code + Compose | ~12 MB |
-| libwhisper.so (arm64-v8a) | ~5 MB |
-| Whisper `base` GGML model (bundled default) | ~74 MB |
+| sherpa-onnx AAR (arm64-v8a) | ~5 MB |
+| Whisper `base` ONNX model (bundled default) | ~74 MB |
 | **Total** | **~91 MB** ⚠️ |
 
 > ⚠️ Bundling `base` (~74 MB) exceeds the 80 MB target. **Decision needed at
 > implementation time:** bundle `tiny` (~39 MB) to hit the budget and offer
-> `base`/`small` as an optional one-time download, or accept a larger APK and
-> ship `base`. The scaffold defaults the user-facing setting to `BASE` but the
-> bundled model, if any, must be chosen to satisfy this NFR.
+> `base` as an optional one-time download, or accept a larger APK and ship
+> `base`. The scaffold defaults the user-facing setting to `BASE` but the
+> bundled model, if any, must be chosen to satisfy this NFR. A bundled Piper
+> TTS voice (MVP 3) would add ~20 MB — keep it an optional download.
 
 ## 3. Battery ≤ 15% per session
 

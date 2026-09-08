@@ -7,6 +7,8 @@
 **MVP 1** covers the full pipeline **record → transcribe → edit → export PDF**,
 100% offline on a mid-range Android phone. **MVP 2** (later, optional module)
 adds AI structuring of raw transcripts into sections, bullets, and headings.
+**MVP 3** (planned) turns the phone into a voice-controlled agent that opens
+apps, taps, types, and scrolls from a spoken command — still fully offline.
 
 ---
 
@@ -46,7 +48,10 @@ See [docs/PRD.md](docs/PRD.md) for the full spec, including MVP 2.
 |--------------|-----------------------------------------------|-----|
 | Language     | Kotlin                                        | Native Android + on-device ML |
 | UI           | Jetpack Compose (Material 3)                  | Modern, fast to build |
-| ML           | whisper.cpp via JNI                           | Runs on CPU, no GPU, Apache-2.0 |
+| STT          | sherpa-onnx (Whisper `base` via ONNX)         | ~50× faster than whisper.cpp; one C lib with Kotlin bindings |
+| TTS (MVP 3)  | sherpa-onnx (Piper)                           | Same runtime as STT, zero extra dependency |
+| LLM (MVP 2/3)| llama.cpp (Phi-3-mini / Gemma-2-2B Q4)        | On-device planner, no server, no framework |
+| UI execution (MVP 3) | AccessibilityService (native)         | No root/ADB/Shizuku; one-time grant in Settings |
 | PDF          | Android `PdfDocument` (built-in)              | Zero deps, Apache-2.0, keeps APK small |
 | Storage      | Room (SQLite)                                 | Local session management |
 | DI           | Hilt                                          | Standard, compile-safe |
@@ -75,13 +80,13 @@ STT-app/
 │       │   │   │   ├── local/      # Room: entity, DAO, database
 │       │   │   │   ├── settings/   # Preferences-backed settings
 │       │   │   │   ├── audio/      # MediaRecorder implementation
-│       │   │   │   ├── recognition/# WhisperNative (JNI) + transcriber + PCM decoder
+│       │   │   │   ├── recognition/# sherpa-onnx STT + PCM decoder
 │       │   │   │   └── pdf/        # PdfDocument implementation
 │       │   │   ├── di/             # Hilt modules
 │       │   │   └── ui/             # Compose screens (theme/navigation/home/…)
 │       │   └── res/
 │       └── test/                   # JVM unit tests
-├── whisper/                        # whisper.cpp native build plan (JNI)
+├── ml/                             # ML runtimes & models (sherpa-onnx, llama.cpp)
 ├── docs/                           # All documentation (see below)
 ├── gradle/libs.versions.toml       # Version catalog
 └── .github/workflows/ci.yml        # CI
@@ -109,9 +114,9 @@ Prerequisites: **JDK 17**, an Android SDK (Android Studio Ladybug+ recommended).
 ./gradlew lintDebug
 ```
 
-> ⚠️ Transcription (F2) requires bundling the native whisper.cpp library and a
-> model file — the scaffold ships with a stubbed JNI bridge. See
-> [docs/SETUP.md](docs/SETUP.md) and [whisper/README.md](whisper/README.md).
+> ⚠️ Transcription (F2) requires bundling the sherpa-onnx runtime (Whisper
+> model) — the scaffold ships with a stubbed STT bridge. See
+> [docs/SETUP.md](docs/SETUP.md) and [ml/README.md](ml/README.md).
 
 ---
 
@@ -119,21 +124,21 @@ Prerequisites: **JDK 17**, an Android SDK (Android Studio Ladybug+ recommended).
 
 | Doc | What it covers |
 |-----|----------------|
-| [docs/PRD.md](docs/PRD.md) | Full product requirements: both MVPs, scope, priorities, NFRs, success metrics, risks |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, module map, data flow, threading, offline design, diagrams |
+| [docs/PRD.md](docs/PRD.md) | Full product requirements: MVP 1/2/3, scope, priorities, NFRs, success metrics, risks |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, module map, data flow, threading, offline design, agent architecture, diagrams |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture Decision Records (why each choice was made) |
 | [docs/NFR.md](docs/NFR.md) | Non-functional targets & how to measure them |
 | [docs/TESTING.md](docs/TESTING.md) | Test strategy: unit / instrumented / manual device matrix |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | MVP 1 → MVP 2 milestones and definition of done |
-| [docs/SETUP.md](docs/SETUP.md) | Build environment, signing, whisper build, APK size budget |
-| [whisper/README.md](whisper/README.md) | Building whisper.cpp for Android + JNI symbol contract |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | MVP 1 → MVP 2 → MVP 3 milestones and definition of done |
+| [docs/SETUP.md](docs/SETUP.md) | Build environment, signing, ML runtimes, APK size budget |
+| [ml/README.md](ml/README.md) | sherpa-onnx (STT + TTS) and llama.cpp (LLM) integration plan |
 
 ---
 
 ## Status
 
 This is a **scaffold**: the structure, build files, domain model, Room layer,
-PDF export, and UI skeleton are in place. Native whisper integration and full
+PDF export, and UI skeleton are in place. sherpa-onnx STT integration and full
 end-to-end transcription are the next implementation milestones — see
 [docs/ROADMAP.md](docs/ROADMAP.md).
 

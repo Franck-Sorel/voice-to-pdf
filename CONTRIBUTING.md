@@ -29,7 +29,7 @@ note-taking for students in low-connectivity regions.
 See `docs/ROADMAP.md`. Highest-value first contributions:
 
 - 16 kHz resampling in `MediaCodecPcmDecoder`
-- whisper.cpp native build (`whisper/README.md`) and CI for it
+- sherpa-onnx ML runtime integration (`ml/README.md`) and CI for it
 - Instrumented tests (Room DAO, Compose UI)
 
 ## Code of conduct

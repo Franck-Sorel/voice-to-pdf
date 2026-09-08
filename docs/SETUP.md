@@ -45,31 +45,35 @@ keyPassword=...
 release). Add a `signingConfigs { create("release") { ... } }` block wired from
 `keystore.properties` before distributing — and keep it out of VCS.
 
-## 4. Whisper native library (required for transcription, F2)
+## 4. ML runtimes (required for transcription, F2)
 
-Transcription calls `libwhisper.so` over JNI. It is **not** part of this
-scaffold. Build it per [whisper/README.md](../whisper/README.md), then:
+Transcription uses **sherpa-onnx** (Whisper `base` ONNX). The real
+implementation uses sherpa-onnx's official Android AAR — the scaffold's
+`WhisperNative` JNI stub is superseded (ADR-009). See
+[ml/README.md](../ml/README.md) for the full plan. In short:
 
-1. Place the built `.so` files under
-   `app/src/main/jniLibs/{arm64-v8a,armeabi-v7a}/libwhisper.so`.
-2. Bundle a GGML model: put `base.bin` (etc.) in
+1. Add the sherpa-onnx AAR to `gradle/libs.versions.toml` + `app/build.gradle.kts`.
+2. Bundle a Whisper ONNX model + `tokens.txt` under
    `app/src/main/assets/models/` and copy to `filesDir/models/` on first
-   launch (see `WhisperTranscriber.resolveModelFile`).
-3. Verify with `./gradlew assembleDebug`.
+   launch (adapt `WhisperTranscriber.resolveModelFile`).
+3. Replace the `WhisperNative` JNI stub with a `SherpaOnnxTranscriber`
+   implementing the existing `Transcriber` interface.
+4. Verify with `./gradlew assembleDebug`.
 
-Until step 1 is done, tapping "Start recording → Stop" runs the pipeline but
-fails at `System.loadLibrary` — expected; see `docs/ROADMAP.md` M1.
+Until step 1–3 are done, tapping "Start recording → Stop" runs the pipeline
+but fails at the STT step — expected; see `docs/ROADMAP.md` M1.
 
 ## 5. APK size budget
 
 See `docs/NFR.md §2`. Gate: `ls -lh app/build/outputs/apk/release/app-release.apk`
-must be ≤ 80 MB or the release CI job fails. Decide bundled model accordingly.
+must be ≤ 80 MB or the release CI job fails. Decide bundled model accordingly
+(Whisper `base` ONNX ~74 MB; a bundled Piper voice adds ~20 MB).
 
 ## 6. Common issues
 
 | Symptom | Fix |
 |---------|-----|
-| `System.loadLibrary("whisper")` UnsatisfiedLinkError | Build & bundle `libwhisper.so` (step 4) |
+| STT fails / model not loaded | Add the sherpa-onnx AAR + bundle/copy the Whisper ONNX model (step 4) |
 | Model file not found | Bundle model + copy to `filesDir/models/` |
 | KSP/AGP version conflict | Keep Kotlin 2.3.x + KSP 2.3.x as pinned in the catalog |
 | `kapt` requested | This project uses KSP only; do not add kapt (incompatible with built-in Kotlin) |

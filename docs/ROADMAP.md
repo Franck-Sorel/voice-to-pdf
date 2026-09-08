@@ -13,8 +13,9 @@
 
 ### M1 — Core flow end-to-end
 
-- [ ] Build & bundle `libwhisper.so` + a model (see `whisper/README.md`) — pick
-  bundle strategy per `docs/NFR.md §2` (tiny bundled vs base bundled)
+- [ ] Wire **sherpa-onnx** (Whisper `base` ONNX) as the STT runtime — see
+  `ml/README.md`; pick bundle strategy per `docs/NFR.md §2` (tiny bundled vs
+  base bundled)
 - [ ] Implement 16 kHz resampling in `MediaCodecPcmDecoder`
 - [ ] Implement `MediaMetadataRetriever` duration for progress
 - [ ] Wire record → transcribe → READY on a real device
@@ -59,7 +60,29 @@ completion in beta telemetry.
 
 ---
 
-## MVP 3+ (ideas, not committed)
+## MVP 3 — Voice-controlled phone agent (future)
+
+### M5 — Agent core loop (P0)
+
+- [ ] `:agent` module: AccessibilityService + `ToolExecutor` (tap/type/scroll/openApp)
+- [ ] sherpa-onnx **TTS** (Piper) confirmation speech (F4)
+- [ ] llama.cpp planner: Phi-3-mini 3.8B Q4 (6 GB) / Gemma-2-2B Q4 (4 GB) — load on demand
+- [ ] STT wake/command input through the existing speech pipeline (F1)
+- [ ] Per-action confirmation dialog for sensitive actions (F6, hard boundary PRD §7.5)
+
+### M6 — Reliability & distribution
+
+- [ ] RAM budget verification vs `docs/ARCHITECTURE.md §10.2` (≤ 3.2 GB with Gemma-2-2B)
+- [ ] LLM unload after response; STT/TTS independent loading
+- [ ] Play Store policy review for the AccessibilityService disclosure
+- [ ] Beta with the 4 use cases from PRD §7.3
+
+**Definition of done:** the 4 target commands complete offline on a 4 GB
+device without OOM; every sensitive action shows the allow dialog.
+
+---
+
+## MVP 4+ (ideas, not committed)
 
 - Summaries, flashcards, quiz generation (from MVP 2 structured docs)
 - Multi-document projects
@@ -69,8 +92,11 @@ completion in beta telemetry.
 
 ## Dependencies & ownership
 
-- MVP 1 must be fully usable without MVP 2 (PRD §6).
-- MVP 2 is a separate APK or in-app module, updateable independently.
-- Native whisper build and model bundling are on the critical path for M1 —
-  start early; a university partnership can host CI for native builds
+- MVP 1 must be fully usable without MVP 2 and MVP 3 (PRD §6, §7.10).
+- MVP 2 and MVP 3 are separate APKs or in-app modules, updateable
+  independently.
+- sherpa-onnx model bundling (Whisper + Piper) is on the critical path for
+  M1 — start early; a university partnership can host CI for native builds
   (PRD risk).
+- The scaffold's `WhisperNative` JNI stub is superseded: the real STT
+  implementation uses the sherpa-onnx Android AAR (`ml/README.md`).

@@ -101,3 +101,33 @@ inference; `small` may exceed it — hence the model-size warning in settings.
 | No-INTERNET static check | Every commit (CI) |
 | Transcription speed + battery benchmarks | Every release |
 | Manual offline happy path | Every release |
+
+---
+
+## 9. MVP 3 agent resource budget (additive module)
+
+Applies when the voice agent (PRD §7) is installed. Speech targets the same
+4 GB devices as MVP 1.
+
+| Component | RAM | Notes |
+|-----------|-----|-------|
+| Android OS + system | ~1.2 GB | Baseline |
+| sherpa-onnx STT (Whisper base) | ~200 MB | Loaded only during transcription |
+| sherpa-onnx TTS (Piper) | ~150 MB | Loaded only during speech |
+| llama.cpp (Phi-3-mini Q4) | ~2.5 GB | **Bottleneck** |
+| App UI + AccessibilityService | ~150 MB | |
+| **Total peak** | **~4.2 GB** | ⚠️ Exceeds the 4 GB budget |
+
+**Acceptance gates (MVP 3):**
+
+| Requirement | Target | Measurement |
+|-------------|--------|-------------|
+| Peak RSS on 4 GB device | ≤ 3.5 GB (safety headroom under 4 GB) | Instrumented agent-run benchmark on reference devices (`dumpsys meminfo`) |
+| Low-RAM default | Gemma-2-2B Q4 (~1.5 GB) → total ~3.2 GB | Same benchmark with Gemma-2-2B active |
+| LLM on-demand | Not resident when idle | Verify unload after each response (`ActivityManager.getProcessMemoryInfo`) |
+| Agent end-to-end (4 GB) | STT RTF ≤ 0.15; LLM plan ≤ 5 s; TTS first-audio ≤ 300 ms | Per-stage timers in the benchmark harness |
+| Sensitive-action guard | 100% of send/call/account actions require the allow dialog | Instrumented test asserting `VoiceAgent.run` blocks without confirmation |
+
+Mitigations already decided (PRD §7.8): Gemma-2-2B instead of Phi-3-mini on
+4 GB, load/unload LLM on demand, STT/TTS loaded independently, and 6 GB
+devices default to Phi-3-mini.

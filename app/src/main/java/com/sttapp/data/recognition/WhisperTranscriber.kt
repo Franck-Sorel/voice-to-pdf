@@ -16,9 +16,12 @@ import javax.inject.Singleton
 import kotlin.math.min
 
 /**
- * On-device transcription via whisper.cpp over JNI.
+ * Placeholder on-device transcription via the (superseded) whisper.cpp JNI
+ * stub. Replaced in ROADMAP M1 by a sherpa-onnx implementation
+ * (`SherpaOnnxTranscriber`) that implements the same [Transcriber] interface
+ * — see `ml/README.md` and ADR-009.
  *
- * Pipeline: audio file -> PCM (16 kHz mono) -> whisper.cpp -> text.
+ * Pipeline: audio file -> PCM (16 kHz mono) -> STT runtime -> text.
  * Runs on [Dispatchers.Default] (CPU-heavy, no I/O blocking needed).
  */
 @Singleton
@@ -60,17 +63,17 @@ class WhisperTranscriber @Inject constructor(
     }
 
     /**
-     * Model files live in `filesDir/models/<id>.bin`. For MVP 1 they are
+     * Model files live in `filesDir/models/<id>.onnx`. For MVP 1 they are
      * bundled into assets at build time and copied here on first launch;
-     * see `whisper/README.md` for the download-and-bundle step.
+     * see `ml/README.md` for the download-and-bundle step.
      */
     private fun resolveModelFile(model: WhisperModel): File {
         val dir = File(context.filesDir, "models")
-        val target = File(dir, "${model.id}.bin")
+        val target = File(dir, "${model.id}.onnx")
         return target.also {
             check(it.exists()) {
                 "Model file not found: ${it.absolutePath}. " +
-                    "Bundle it per whisper/README.md before transcription."
+                    "Bundle it per ml/README.md before transcription."
             }
         }
     }

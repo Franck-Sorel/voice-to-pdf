@@ -1,11 +1,13 @@
 package com.sttapp.data.recognition
 
 /**
- * JNI bridge to the bundled whisper.cpp native library.
+ * @deprecated JNI bridge to whisper.cpp — superseded by sherpa-onnx (ADR-009).
  *
- * The native `libwhisper.so` is NOT part of this scaffold — it must be built
- * for each ABI (see `whisper/README.md`). [load] is called lazily from the
- * transcriber so the app launches fine even when the library is missing.
+ * sherpa-onnx is ~50× faster than whisper.cpp for the same Whisper model on
+ * Android, so the real STT implementation uses the sherpa-onnx Android AAR
+ * (`OfflineRecognizer` etc.) instead of this custom JNI bridge. See
+ * `ml/README.md`. Kept only as a placeholder so the scaffold's `Transcriber`
+ * wiring compiles; remove when `SherpaOnnxTranscriber` lands (ROADMAP M1).
  *
  * JNI symbol names must match these functions exactly, e.g.
  * `Java_com_sttapp_data_recognition_WhisperNative_whisperInit`.

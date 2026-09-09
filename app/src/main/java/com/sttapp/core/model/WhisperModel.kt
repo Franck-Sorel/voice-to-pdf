@@ -9,7 +9,7 @@ enum class SessionStatus {
 /**
  * Whisper model sizes exposed to the user.
  *
- * @property approxSizeMb approximate on-device model size (ONNX for sherpa-onnx)
+ * @property approxSizeMb approximate on-device model size (whisper.cpp GGML q8_0)
  * @property nominalRealtimeFactor processing minutes needed per audio minute (rough guide)
  */
 enum class WhisperModel(

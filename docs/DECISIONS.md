@@ -7,47 +7,53 @@ superseding records rather than rewriting history.
 | ID | Decision |
 |----|----------|
 | [ADR-001](#adr-001-offline-first-no-network-dependencies) | Offline-first: no network dependencies in MVP 1 |
-| [ADR-002](#adr-002-whispercpp-via-jni-for-transcription) | ~~whisper.cpp via JNI~~ → superseded by [ADR-009](#adr-009-sherpa-onnx-for-on-device-stt) |
+| [ADR-002](#adr-002-whispercpp-via-jni-for-transcription) | whisper.cpp via JNI — the STT runtime (see [ADR-015](#adr-015-whispercpp-ggml-restored-as-the-on-device-stt-runtime)) |
 | [ADR-003](#adr-003-android-pdfdocument-not-itext) | Android `PdfDocument` for PDF export |
 | [ADR-004](#adr-004-single-app-module-for-mvp-1) | Single `:app` module for MVP 1 |
 | [ADR-005](#adr-005-room-hilt-ksp-for-storage-and-di) | Room + Hilt + KSP for storage and DI |
 | [ADR-006](#adr-006-post-hoc-not-real-time-transcription) | Post-hoc transcription only |
 | [ADR-007](#adr-007-audio-retention-is-opt-in) | Audio retained only if user opts in |
 | [ADR-008](#adr-008-agp-9-built-in-kotlin) | AGP 9 built-in Kotlin (no `kotlin-android` plugin) |
-| [ADR-009](#adr-009-sherpa-onnx-for-on-device-stt) | sherpa-onnx (Whisper base via ONNX) for STT |
-| [ADR-010](#adr-010-sherpa-onnx-piper-for-on-device-tts) | sherpa-onnx (Piper) for on-device TTS |
+| [ADR-009](#adr-009-sherpa-onnx-for-on-device-stt) | ~~sherpa-onnx for STT~~ → superseded by [ADR-015](#adr-015-whispercpp-ggml-restored-as-the-on-device-stt-runtime) |
+| [ADR-010](#adr-010-sherpa-onnx-piper-for-on-device-tts) | Piper for on-device TTS (MVP 3, deferred; re-evaluate runtime) |
 | [ADR-011](#adr-011-llamacpp-for-the-on-device-llm-planner) | llama.cpp (Q4 Phi-3-mini / Gemma-2-2B) for the LLM planner |
 | [ADR-012](#adr-012-accessibilityservice-for-ui-execution) | AccessibilityService for UI execution |
 | [ADR-013](#adr-013-native-android-only-rejected-alternatives) | Native Android only (rejected: Flutter/RN, vision agent, ADB/root/Shizuku, cloud) |
+| [ADR-015](#adr-015-whispercpp-ggml-restored-as-the-on-device-stt-runtime) | whisper.cpp + GGML q8_0 restored as the on-device STT runtime |
 
 ---
 
 ## ADR-001: Offline-first, no network dependencies
 
-**Status:** Accepted (MVP 1)
+**Status:** Accepted (MVP 1); **amended** to allow opt-in telemetry
 
 **Context:** Target users have unreliable/no internet. PRD requires 100% of P0
 features to work in airplane mode, and cloud processing is explicitly out of
 scope for MVP 1.
 
-**Decision:** MVP 1 ships no network stack at all — no HTTP client, no
-accounts, no telemetry that leaves the device. Transcription, storage, and PDF
-export are fully local. Even model files are bundled into the APK.
+**Decision:** The app is **offline-first** — every P0 feature (record →
+transcribe → edit → export PDF) works fully in airplane mode; model files are
+bundled into the APK. Networking is limited to **opt-in, minimal, PII-free
+diagnostics and update checks**, sent only when the user consents *and*
+connectivity exists (see `docs/NFR.md "Telemetry & privacy"`). Declares
+`INTERNET` permission for this, but no feature depends on it.
 
-**Consequences:** Small APK, no backend to run or pay for, strong privacy story
-("nothing leaves the device"). Trade-off: model quality is capped by what fits
-in ≤ 80 MB APK; larger LLM models are deferred to MVP 2 as an optional
-download.
+**Consequences:** Small-ish APK, no mandatory backend, strong privacy story —
+but not literally "no INTERNET permission." The CI gate that *failed* on the
+presence of `INTERNET` was removed accordingly. Model quality is capped by
+what fits the ~100 MB release ceiling; larger LLM models are deferred to
+MVP 2/3 as optional downloads.
 
 ---
 
 ## ADR-002: whisper.cpp via JNI for transcription
 
-**Status:** ~~Accepted~~ **Superseded by [ADR-009](#adr-009-sherpa-onnx-for-on-device-stt)**
+**Status:** ~~Superseded by ADR-009~~ **Restored as the STT runtime by [ADR-015](#adr-015-whispercpp-ggml-restored-as-the-on-device-stt-runtime)**
 
-> This record is kept for history. sherpa-onnx is strictly faster than
-> whisper.cpp for the same Whisper model on Android and replaces it for all
-> speech work — see ADR-009/010.
+> This record was briefly superseded by ADR-009 (sherpa-onnx). Real model-size
+> data showed sherpa-onnx's ONNX exports are too large (base int8 ≈ 152 MB) to
+> bundle for broad-device distribution, so whisper.cpp + GGML is the STT
+> runtime again — see ADR-015.
 
 **Context:** Need on-device Whisper (tiny/base/small) on CPU with no GPU, on
 4 GB RAM devices, no Google Play Services, Apache-2.0 licensing. Options:
@@ -172,7 +178,11 @@ plugin must be re-added — noted here so nobody is surprised later.
 
 ## ADR-009: sherpa-onnx for on-device STT
 
-**Status:** Accepted (supersedes [ADR-002](#adr-002-whispercpp-via-jni-for-transcription))
+**Status:** ~~Accepted~~ **Superseded by [ADR-015](#adr-015-whispercpp-ggml-restored-as-the-on-device-stt-runtime)**
+
+> Kept for history. Adopted because a flawed benchmark suggested sherpa-onnx
+> was ~50× faster than whisper.cpp. Real model-size data overrides it: see
+> ADR-015.
 
 **Context:** The app transcribes lectures (MVP 1) and, from MVP 3, hears voice
 commands for a phone agent — all offline on 4 GB devices. Early candidate
@@ -187,27 +197,30 @@ Android. No GMS dependency (unlike `SpeechRecognizer`).
 
 | Alternative | Why not |
 |-------------|---------|
-| whisper.cpp | ~50× slower on Android for the same model (measured RTF 0.13 for sherpa-onnx vs 3.52 for whisper.cpp). No reason to keep it. |
+| whisper.cpp | Believed ~50× slower (measured RTF 0.13 vs 3.52) — later shown to be a misconfigured whisper.cpp benchmark artifact (see ADR-015). |
 | Vosk | Worse accuracy (~15%+ WER on clean audio) |
 | Google Speech API / ML SpeechRecognizer | Needs network + per-character cost + privacy violation; `SpeechRecognizer` needs GMS. Violates offline-first (ADR-001). |
 
-**Consequences:** Same runtime powers STT (Whisper) and TTS (Piper) — one
-library, one ONNX runtime, one dependency to keep updated. Model files are
-`.onnx` (not GGML). The scaffold's `WhisperNative` JNI stub is superseded; the
-real implementation uses the sherpa-onnx AAR (see `ml/README.md`).
+**Consequences (overtaken):** The claimed benefits (single runtime for STT+TTS,
+small `.onnx`) were undercut by real sizes: **base int8 ≈ 152 MB**, **tiny int8
+≈ 98 MB** — too large to bundle under the ~100 MB release ceiling. Replaced by
+whisper.cpp + GGML (ADR-015).
 
 ---
 
-## ADR-010: sherpa-onnx (Piper) for on-device TTS
+## ADR-010: Piper for on-device TTS
 
-**Status:** Accepted (MVP 3)
+**Status:** Accepted (MVP 3, **deferred**; re-evaluate runtime at MVP 3)
 
 **Context:** The MVP 3 agent must speak confirmations ("Done. Email sent.")
 offline. Candidates: cloud TTS (ElevenLabs/Azure), Android's default TTS,
-Kokoro, or Piper via sherpa-onnx.
+Kokoro, or a Piper voice.
 
-**Decision:** Use **Piper voices through sherpa-onnx** — the same library as
-STT (ADR-009), same ONNX Runtime session, zero additional dependency.
+**Decision:** Use a **Piper voice** for on-device TTS. The original ADR
+chose Piper *through sherpa-onnx* to share STT's runtime — but STT is now
+whisper.cpp (ADR-015), so the TTS runtime is reopened. Recommended at MVP 3:
+a stand-alone Piper engine (Piper is MIT and engine-agnostic). This decision
+is recorded but intentionally deferred.
 
 **Why THIS, not the alternatives:**
 
@@ -217,9 +230,9 @@ STT (ADR-009), same ONNX Runtime session, zero additional dependency.
 | Android default TTS | Robotic quality, no neural voices |
 | Kokoro | 2× slower, 5× larger model; marginal quality gain not worth it on 4 GB RAM |
 
-**Consequences:** One native dependency covers both directions of speech.
-TTS models are loaded only during speech output (see resource budget in
-`docs/ARCHITECTURE.md`).
+**Consequences:** One independent, MIT TTS dependency for MVP 3. TTS is
+loaded only during speech output. Exact engine (Piper-standalone vs
+sherpa-onnx for TTS only) to be chosen at MVP 3 kickoff.
 
 ---
 
@@ -305,8 +318,51 @@ frameworks and every alternative execution path.
 | Vision-based agent (screenshot + VLM) | 7B+ VLM, 4+ GB RAM, 10× slower; accessibility tree is free |
 | ADB / Root / Shizuku | Not production-viable on student devices |
 | Google Speech API / Cloud STT | Network + cost + privacy; offline-first is the point |
-| whisper.cpp | Strictly slower than sherpa-onnx (ADR-009) |
+| sherpa-onnx (for STT) | ONNX exports too large to bundle at target accuracy (see ADR-015) |
 
 **Consequences:** Single platform, single codebase, best performance and
 framework access. Cost: no cross-platform reuse — acceptable for a student
 niche on Android.
+
+---
+
+## ADR-015: whisper.cpp + GGML restored as the on-device STT runtime
+
+**Status:** Accepted (replaces ADR-009 for STT; restores ADR-002)
+
+**Context:** ADR-009 chose sherpa-onnx because a benchmark appeared to show it
+~50× faster than whisper.cpp. On re-measurement with real artifacts and sizes:
+
+- sherpa-onnx's official Whisper ONNX exports are far larger than their
+  nominal sizes suggest: **base int8 ≈ 152 MB** (encoder 27.8 + decoder
+  124.6 MB), **tiny int8 ≈ 98 MB**.
+- The "RTF 0.13 vs 3.52" figure is **not apples-to-apples** (different models,
+  different runtimes) and the whisper.cpp 3.52 number is a misconfigured-build
+  artifact — a properly built whisper.cpp easily beats real-time.
+- Target is a **reliable, well-designed, reusable STT layer** that must run on
+  the *majority* of (low/mid-range) African phones — so install size and
+  accuracy both matter, and cost $0.
+
+**Decision:** Use **whisper.cpp** (MIT) as the on-device STT runtime with
+**GGML** int8 models, bridged through the minimal `WhisperNative` JNI wrapper
+behind the `Transcriber` interface. Default bundle: **`ggml-base-q8_0.bin`
+(~78 MB)** → ~99 MB release APK (within the ~100 MB ceiling); low-RAM
+fallback: `ggml-tiny-q8_0.bin` (~41.5 MB) → ~60 MB.
+
+**Why THIS, not the alternatives:**
+
+| Alternative | Why not |
+|-------------|---------|
+| sherpa-onnx (ONNX) | Real sizes (base int8 ≈ 152 MB, tiny int8 ≈ 98 MB) can't meet base accuracy + ~100 MB / broad-device fit |
+| Vosk | Worse accuracy (~15%+ WER) — unacceptable for lecture reliability |
+| faster-whisper / CTranslate2 | Not Android-viable (no Android support) |
+| Cloud STT | Network + per-char cost + privacy; fails offline-first (ADR-001) |
+
+**Consequences:** Base-level transcription quality at a size that installs on
+the majority of target devices, offline day-one. Cost: we own the native build
+(CMake/NDK, `arm64-v8a`) and the JNI contract — documented in `ml/README.md`.
+The `Transcriber`/`PcmDecoder` seam makes this a clean, reusable `:recognition`
+layer. TTS (MVP 3) is decoupled (ADR-010).
+
+---
+

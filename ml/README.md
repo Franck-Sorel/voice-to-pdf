@@ -1,100 +1,117 @@
-# ML runtimes & models (sherpa-onnx, llama.cpp)
+# ML runtimes & models (whisper.cpp, llama.cpp)
 
-This directory is the home for the machine-learning side of the app. It holds
-the integration plan, model manifests, and build scripts for the three on-device
-runtimes:
+This directory is the home for the machine-learning side of the app: the
+integration plan, build scripts, and model manifests.
 
 | Runtime | Purpose | Model | Used by |
 |---------|---------|-------|---------|
-| **sherpa-onnx** | Speech-to-text (STT) | Whisper `base` exported to ONNX | MVP 1 + MVP 3 |
-| **sherpa-onnx** | Text-to-speech (TTS) | Piper voice ONNX | MVP 3 |
+| **whisper.cpp** | Speech-to-text (STT) | GGML `base` q8_0 (~78 MB), `tiny` q8_0 (~41.5 MB) | MVP 1 + MVP 3 |
+| Piper / sherpa-onnx | Text-to-speech (TTS) | Piper voice | MVP 3 (deferred) |
 | **llama.cpp** | LLM planner | Phi-3-mini 3.8B Q4 / Gemma-2-2B Q4 (GGUF) | MVP 2 + MVP 3 |
 
-Rationale for choosing these (and rejecting whisper.cpp / Vosk / Ollama /
-LangChain / cloud APIs) is recorded in `docs/DECISIONS.md` ADR-009 → ADR-013.
+> **2026-09-08 decision (ADR-015).** The on-device STT runtime is
+> **whisper.cpp + GGML**, *not* sherpa-onnx. Reason: sherpa-onnx's official
+> Whisper ONNX exports are far larger than their nominal sizes suggest —
+> **base int8 ≈ 152 MB** (encoder 27.8 + decoder 124.6) and even **tiny int8 ≈
+> 98 MB** — so no bundled ONNX model can fit the ~100 MB / broad-device
+> release target. whisper.cpp GGML `base` q8_0 (~78 MB) keeps base-level
+> accuracy at ~99 MB APK. The earlier "sherpa-onnx is ~50× faster" claim was
+> based on a misconfigured whisper.cpp benchmark (RTF 3.52 is an artifact; a
+> properly built whisper.cpp runs far faster than real-time).
+>
+> This supersedes ADR-009/ADR-010's reasoning for STT. TTS (Piper) and the
+> LLM remain deferred to MVP 2/3 and are independent of the STT runtime.
 
-> The original scaffold shipped a whisper.cpp JNI stub (`WhisperNative.kt`).
-> That approach was **superseded by ADR-009** — sherpa-onnx is ~50× faster than
-> whisper.cpp for the same Whisper model on Android. The real implementation
-> uses sherpa-onnx's official Android bindings instead of a custom JNI bridge.
+## 1. STT — whisper.cpp (GGML)
 
----
+- **Purpose:** a reliable, reusable on-device STT layer for this app and
+  other projects (see "Reusable layer" below).
+- **Library:** whisper.cpp (MIT), built for Android ABIs and bridged through
+  the tiny JNI wrapper in `WhisperNative.kt`.
+- **Models:** GGML INT8 files. Default **`ggml-base-q8_0.bin`** (~78 MB);
+  low-RAM fallback **`ggml-tiny-q8_0.bin`** (~41.5 MB).
+- **Get them:** run `bash ml/download-models.sh` (fetches + size-verifies).
+- **Build the native lib:** see the "Native build" section.
 
-## 1. STT — sherpa-onnx (Whisper base via ONNX)
+### Integration steps (ROADMAP M1)
 
-- **Library:** `com.k2fsa.sherpa.onnx:sherpa-onnx` (official Android AAR with
-  Kotlin/Java bindings). No GMS dependency.
-- **Model:** Whisper `base` exported to ONNX (int8 or float32; int8 preferred
-  for RAM). Audio is fed as 16 kHz mono PCM — the `PcmDecoder` pipeline
-  (`MediaCodecPcmDecoder`) already produces this.
-- **API shape (verify exact names against the pinned sherpa-onnx release):**
-  `OfflineRecognizer` / `OfflineRecognizerConfig` / `OfflineStream`, feeding
-  the 16 kHz PCM and reading segment results.
-- **Performance:** RTF ~0.13 on a mid-range device (vs ~3.52 for whisper.cpp)
-  — well under the ≤ 1.5× real-time NFR.
-- **Threading:** cap threads (Android AAR defaults are fine; keep ≤ 4 on 4 GB
-  devices) and run inference off the main thread.
+1. `bash ml/download-models.sh` → drops models + tokens into
+   `app/src/main/assets/models/`.
+2. Build `libwhisper.so` for `arm64-v8a` (CMake/NDK, see below) and place
+   under `app/src/main/jniLibs/arm64-v8a/`.
+3. First launch copies models from `assets` to `filesDir/models/`
+   (`WhisperTranscriber.resolveModelFile` updated to GGML `.bin` names).
+4. Fair RTF benchmark on the target 4 GB device: same model + threads (4) +
+   greedy decoding + fixed audio; confirm ≤ 1.5× real-time before locking
+   `base` as default.
 
-### Integration steps
+### Native build (CMake + AGP externalNativeBuild)
 
-1. Add the sherpa-onnx AAR to `gradle/libs.versions.toml` + `app/build.gradle.kts`.
-2. Bundle Whisper ONNX + `tokens.txt` under `app/src/main/assets/models/`.
-3. Copy models to `filesDir/models/` on first launch (the existing
-   `WhisperTranscriber.resolveModelFile` flow, adapted to the AAR API).
-4. Replace the `WhisperNative` JNI stub with a `SherpaOnnxTranscriber`
-   implementing the same `Transcriber` interface (keeps `core/` untouched).
+```gradle
+android {
+    defaultConfig { externalNativeBuild { cmake { arguments("-DWHISPER_BUILD_EXAMPLES=OFF", "-DWHISPER_BUILD_TESTS=OFF") } } }
+    externalNativeBuild { cmake { path("src/main/cpp/CMakeLists.txt") } }
+    ndk { abiFilters += "arm64-v8a" }   // already set in app/build.gradle.kts
+}
+```
 
-## 2. TTS — sherpa-onnx (Piper)
+- ABI `arm64-v8a` is sufficient (already configured). Skip x86/armeabi-v7a to
+  keep the APK small.
+- Cap threads to `min(cpuCount, 4)` on 4 GB devices (already in
+  `WhisperTranscriber`).
+- JNI symbol contract: `WhisperNative.whisperInit / whisperTranscribe /
+  whisperRelease` → `Java_com_sttapp_data_recognition_WhisperNative_*`.
+- Ensure the JNI bridge and models are kept in R8: the `WhisperNative` keep
+  rule is already in `app/proguard-rules.pro`.
 
-- **Library:** same sherpa-onnx AAR — zero additional dependency; shares the
-  same ONNX Runtime session as STT.
-- **Model:** a Piper voice `.onnx` (small, ~20–60 MB depending on voice) +
-  its `.onnx.json` config.
-- **API shape (verify against release):** `OfflineTts` / `OfflineTtsConfig`.
-- **Loading:** keep TTS loaded only while speaking; unload afterward (see the
-  resource budget).
+## 2. TTS — Piper (MVP 3, deferred)
 
-## 3. LLM planner — llama.cpp
+Voice confirmation ("Done. Email sent.") uses a Piper voice. It is **not** in
+scope for the current MVP-1 STT push and is independent of the whisper.cpp STT
+runtime. Re-evaluate runtime choice (sherpa-onnx or stand-alone Piper engine)
+when MVP 3 starts. Piper voices are MIT.
 
-- **Library:** llama.cpp built for Android (or the prebuilt llama-android
-  artifacts). The C API is called directly from Kotlin via JNI — no server, no
-  Ollama, no LangChain.
-- **Models (GGUF, Q4_K_M):**
+## 3. LLM planner — llama.cpp (MVP 2/3, deferred)
 
-| Model | RAM | Notes |
-|-------|-----|-------|
-| Phi-3-mini 3.8B Q4 | ~2.5 GB | Default on 6 GB devices |
-| Gemma-2-2B Q4 | ~1.5 GB | "Low-RAM" default on 4 GB devices |
-
-- **Loading:** load on demand (when the user speaks / triggers structuring),
-  unload after the response. This is the single biggest RAM lever.
-- **Prompt:** see `docs/PRD.md §5.6` (structuring) and the agent plan/act loop
-  (`docs/ARCHITECTURE.md §10`).
+Same as documented before: llama.cpp (GGUF), Phi-3-mini 3.8B Q4 (~2.5 GB RAM,
+default on 6 GB) / Gemma-2-2B Q4 (~1.5 GB RAM, low-RAM on 4 GB); load on
+demand. See `docs/PRD.md §5.5, §7.2`.
 
 ## 4. Resource budget (4 GB device)
 
 | Component | RAM |
 |-----------|-----|
-| STT (Whisper base) | ~200 MB |
-| TTS (Piper) | ~150 MB |
-| LLM (Phi-3-mini Q4) | ~2.5 GB |
-| LLM (Gemma-2-2B Q4) | ~1.5 GB |
+| STT (Whisper `base` q8_0) | ~150–300 MB (model + decode buffers) |
+| TTS (Piper) | ~150 MB (MVP 3) |
+| LLM (Phi-3-mini Q4) | ~2.5 GB (MVP 2/3, loaded on demand) |
 
-STT and TTS are loaded independently of the LLM. Acceptance gates live in
-`docs/NFR.md §9`.
+Acceptance gates live in `docs/NFR.md`.
 
 ## 5. APK-size interplay
 
-Whisper `base` ONNX (~74 MB) + a bundled Piper voice (~20 MB) will exceed the
-80 MB APK NFR if both are embedded. Decide per `docs/NFR.md §2`: bundle `tiny`
-STT in the base APK and offer `base` (and later Piper/LLM models) as a
-one-time optional download.
+| Bundle | Model | APK ~ |
+|--------|-------|-------|
+| `base` q8_0 (default) | ~78 MB | ~99 MB |
+| `tiny` q8_0 (low-RAM) | ~41.5 MB | ~60 MB |
+| `base` + `tiny` | ~119 MB | ~140 MB ⚠️ not for distribution |
 
-## 6. Open implementation tasks (tracked in docs/ROADMAP.md M1/M5)
+The release CI gate is ≤ 100 MB (`docs/NFR.md §2`). Ship `base` only; keep
+`tiny` as an optional download / low-RAM override.
 
-- [ ] Add sherpa-onnx AAR dependency + model bundling script
-- [ ] Replace `WhisperNative` JNI stub with `SherpaOnnxTranscriber`
-- [ ] Implement 16 kHz resampling in `MediaCodecPcmDecoder`
-- [ ] Piper TTS bridge (`TtsEngine`) — MVP 3
-- [ ] llama.cpp integration + on-demand load/unload — MVP 2/3
-- [ ] Model download flow (optional, with consent) — MVP 1 M2
+## 6. Reusable layer
+
+The `Transcriber` interface + `PcmDecoder` + `WhisperNative` form a self-
+contained `:recognition` seam. To reuse in another project: extract the
+`core/recognition` interfaces, `WhisperTranscriber`, `MediaCodecPcmDecoder`
+and the whisper.cpp CMake build into a library module; no UI/DI changes are
+required because everything depends on `Transcriber`, not on whisper.cpp
+directly.
+
+## 7. Open implementation tasks (ROADMAP M1)
+
+- [ ] `bash ml/download-models.sh` and bundle `ggml-base-q8_0.bin`
+- [ ] whisper.cpp CMake build `/src/main/cpp` → `libwhisper.so` (arm64-v8a)
+- [ ] First-launch model copy `assets -> filesDir/models`
+- [ ] Fair RTF benchmark on target device; lock `base` default
+- [ ] Whisper `small` as a future optional download (needs ~244 MB; unlikely
+      to fit a mid-range default — keep as opt-in only)

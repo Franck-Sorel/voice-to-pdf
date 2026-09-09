@@ -41,16 +41,25 @@ class WhisperTranscriber @Inject constructor(
         val pcm = pcmDecoder.decodeToPcm16Mono(audioFile, WHISPER_SAMPLE_RATE)
 
         val modelFile = resolveModelFile(model)
-        val contextHandle = WhisperNative.whisperInit(
-            modelPath = modelFile.absolutePath,
-            language = language.isoCode,
-            threads = availableThreads(),
-        )
+        val contextHandle = WhisperNative.whisperInit(modelPath = modelFile.absolutePath)
 
         try {
+            if (contextHandle == 0L) {
+                return@withContext TranscriptionResult(
+                    text = "",
+                    segments = emptyList(),
+                    language = language,
+                )
+            }
             val durationMs = audioDurationMs(audioFile)
             onProgress(TranscriptionProgress(processedMs = 0L, totalMs = durationMs))
-            val text = WhisperNative.whisperTranscribe(contextHandle, pcm, WHISPER_SAMPLE_RATE)
+            val text = WhisperNative.whisperTranscribe(
+                context = contextHandle,
+                pcm16kHzMono = pcm,
+                sampleRateHz = WHISPER_SAMPLE_RATE,
+                threads = availableThreads(),
+                language = language.isoCode,
+            )
             onProgress(TranscriptionProgress(processedMs = durationMs, totalMs = durationMs))
             TranscriptionResult(text = text, segments = emptyList(), language = language)
         } finally {
@@ -63,19 +72,21 @@ class WhisperTranscriber @Inject constructor(
     }
 
     /**
-     * GGML model files live in `filesDir/models/`. For MVP 1 we bundle
-     * `ggml-base-q8_0.bin` into assets and copy it here on first launch; see
-     * `ml/README.md` and `ml/download-models.sh`.
+     * Returns the GGML model file, copying it from bundled `assets` to
+     * `filesDir/models/` on first use (so transcription works 100% offline).
+     * Bundle via `ml/download-models.sh`; see `ml/README.md`.
      */
     private fun resolveModelFile(model: WhisperModel): File {
         val dir = File(context.filesDir, "models")
         val target = File(dir, ggmlFileName(model))
-        return target.also {
-            check(it.exists()) {
-                "Model file not found: ${it.absolutePath}. " +
-                    "Run ml/download-models.sh and bundle per ml/README.md."
-            }
+        if (target.exists()) return target
+
+        val asset = ggmlFileName(model)
+        context.assets.open(asset).use { input ->
+            dir.mkdirs()
+            target.outputStream().use { output -> input.copyTo(output) }
         }
+        return target
     }
 
     private fun ggmlFileName(model: WhisperModel): String = when (model) {

@@ -7,7 +7,11 @@
 | JDK | 17 | AGP 9 requires JDK 17+ to run the build |
 | Android Studio | Current stable (Ladybug+) | Bundles the Android SDK + SDK Manager |
 | Android SDK | platform 36, build-tools 36.0.0 | AGP downloads SDK components automatically |
+| NDK + CMake | latest stable (SDK-managed) | Required for the whisper.cpp native build (`externalNativeBuild`) |
 | Gradle | none needed | The wrapper (`./gradlew`) downloads Gradle 9.7.1 |
+
+To install NDK + CMake: **Android Studio → SDK Manager → SDK Tools** → tick
+"NDK (Side by side)" and "CMake".
 
 Verify toolchain (these versions are pinned in `gradle/libs.versions.toml`):
 
@@ -56,16 +60,20 @@ enables migrating sideloaded testers to Play with the same signing key.
 
 ## 4. ML runtime (required for transcription, F2)
 
-Transcription uses **whisper.cpp** (GGML). The `WhisperNative` JNI bridge is
-the intended runtime seam (ADR-015). See [ml/README.md](../ml/README.md) for
-the full plan. In short:
+Transcription uses **whisper.cpp** (GGML). The `WhisperNative` JNI bridge and
+the native build (`app/src/main/cpp/CMakeLists.txt` + `jni.cpp`) are already
+scaffolded. One time:
 
-1. `bash ml/download-models.sh` → fetches `ggml-base-q8_0.bin` (~78 MB) into
+1. `bash ml/setup-whisper.sh --models` → fetches the pinned **whisper.cpp
+   submodule** (v1.9.3) and `ggml-base-q8_0.bin` (~78 MB) into
    `app/src/main/assets/models/`.
-2. Build `libwhisper.so` for `arm64-v8a` via CMake/NDK (see `ml/README.md`)
-   and place it under `app/src/main/jniLibs/arm64-v8a/`.
+2. Ensure **CMake + NDK** are installed (see §1); `externalNativeBuild` in
+   `app/build.gradle.kts` is wired and produces `libwhisper.so` for
+   `arm64-v8a`. Building locally: `./gradlew assembleDebug`.
 3. First launch copies the model from `assets` to `filesDir/models/`
-   (`WhisperTranscriber.resolveModelFile` is wired for GGML `.bin` names).
+   (`WhisperTranscriber.resolveModelFile` handles the copy).
+4. For CI, no extra step — the submodule is fetched automatically by
+   `actions/checkout` with `submodules: recursive` (see `.github/workflows/ci.yml`).
 4. Verify with `./gradlew assembleDebug`.
 
 Until steps 1–2 are done, tapping "Start recording → Stop" runs the pipeline

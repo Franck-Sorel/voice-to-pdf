@@ -86,6 +86,17 @@ android {
             useLegacyPackaging = false
         }
     }
+
+    // Native STT runtime (whisper.cpp). Only enabled when the pinned submodule
+    // is present (app/src/main/cpp/whisper.cpp), so the base app still builds
+    // without the NDK/submodule. Requires CMake + NDK in the SDK.
+    if (file("src/main/cpp/whisper.cpp").exists()) {
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+            }
+        }
+    }
 }
 
 ksp {

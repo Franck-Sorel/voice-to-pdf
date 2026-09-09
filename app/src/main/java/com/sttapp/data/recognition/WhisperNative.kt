@@ -12,8 +12,7 @@ package com.sttapp.data.recognition
  * [load] is called lazily from the transcriber so the app still launches even
  * when the library is missing.
  *
- * JNI symbol names must match these functions exactly, e.g.
- * `Java_com_sttapp_data_recognition_WhisperNative_whisperInit`.
+ * JNI symbol names must match the C++ side in `app/src/main/cpp/jni.cpp`.
  */
 object WhisperNative {
 
@@ -27,11 +26,20 @@ object WhisperNative {
         }
     }
 
-    /** Loads a model file and returns an opaque context handle. */
-    external fun whisperInit(modelPath: String, language: String, threads: Int): Long
+    /** Loads a GGML model file; returns an opaque context handle (0 on failure). */
+    external fun whisperInit(modelPath: String): Long
 
-    /** Runs inference over 16 kHz mono PCM; returns joined transcript text. */
-    external fun whisperTranscribe(context: Long, pcm16kHzMono: ShortArray, sampleRateHz: Int): String
+    /**
+     * Runs inference over 16 kHz mono PCM and returns the joined transcript.
+     * Blocking CPU call — must run off the main thread.
+     */
+    external fun whisperTranscribe(
+        context: Long,
+        pcm16kHzMono: ShortArray,
+        sampleRateHz: Int,
+        threads: Int,
+        language: String,
+    ): String
 
     external fun whisperRelease(context: Long)
 }

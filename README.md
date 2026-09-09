@@ -84,12 +84,15 @@ STT-app/
 │       │   │   │   └── pdf/        # PdfDocument implementation
 │       │   │   ├── di/             # Hilt modules
 │       │   │   └── ui/             # Compose screens (theme/navigation/home/…)
+│       │   ├── cpp/                # whisper.cpp native STT (CMakeLists + jni.cpp)
+│       │   │   └── whisper.cpp/    #   pinned git submodule (v1.9.3)
 │       │   └── res/
 │       └── test/                   # JVM unit tests
 ├── ml/                             # ML runtimes & models (whisper.cpp, llama.cpp)
 ├── docs/                           # All documentation (see below)
 ├── gradle/libs.versions.toml       # Version catalog
-└── .github/workflows/ci.yml        # CI
+├── .github/workflows/ci.yml        # CI (fetches the whisper.cpp submodule)
+└── .gitmodules                     # Whisper.cpp pinned submodule
 ```
 
 **The `core/` package never touches Android.** It holds the domain model and

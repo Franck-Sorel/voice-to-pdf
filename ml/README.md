@@ -35,34 +35,39 @@ integration plan, build scripts, and model manifests.
 
 ### Integration steps (ROADMAP M1)
 
-1. `bash ml/download-models.sh` → drops models + tokens into
-   `app/src/main/assets/models/`.
-2. Build `libwhisper.so` for `arm64-v8a` (CMake/NDK, see below) and place
-   under `app/src/main/jniLibs/arm64-v8a/`.
-3. First launch copies models from `assets` to `filesDir/models/`
-   (`WhisperTranscriber.resolveModelFile` updated to GGML `.bin` names).
+1. `bash ml/setup-whisper.sh --models`:
+   - fetches the **pinned whisper.cpp submodule** (`app/src/main/cpp/whisper.cpp`, v1.9.3), and
+   - downloads models into `app/src/main/assets/models/`.
+2. Build — Android Studio (or `./gradlew assembleDebug`) with **CMake + NDK**
+   installed; `externalNativeBuild` in `app/build.gradle.kts` is already wired
+   (enabled because the submodule is present) and produces `libwhisper.so` for
+   `arm64-v8a` from `app/src/main/cpp/CMakeLists.txt` + `jni.cpp`.
+3. First launch copies the model from `assets` to `filesDir/models/`
+   (`WhisperTranscriber.resolveModelFile`).
 4. Fair RTF benchmark on the target 4 GB device: same model + threads (4) +
    greedy decoding + fixed audio; confirm ≤ 1.5× real-time before locking
    `base` as default.
 
-### Native build (CMake + AGP externalNativeBuild)
+### Native build (already scaffolded)
 
-```gradle
-android {
-    defaultConfig { externalNativeBuild { cmake { arguments("-DWHISPER_BUILD_EXAMPLES=OFF", "-DWHISPER_BUILD_TESTS=OFF") } } }
-    externalNativeBuild { cmake { path("src/main/cpp/CMakeLists.txt") } }
-    ndk { abiFilters += "arm64-v8a" }   // already set in app/build.gradle.kts
-}
-```
+The native side lives in `app/src/main/cpp/`:
 
-- ABI `arm64-v8a` is sufficient (already configured). Skip x86/armeabi-v7a to
-  keep the APK small.
-- Cap threads to `min(cpuCount, 4)` on 4 GB devices (already in
-  `WhisperTranscriber`).
-- JNI symbol contract: `WhisperNative.whisperInit / whisperTranscribe /
-  whisperRelease` → `Java_com_sttapp_data_recognition_WhisperNative_*`.
-- Ensure the JNI bridge and models are kept in R8: the `WhisperNative` keep
-  rule is already in `app/proguard-rules.pro`.
+- `CMakeLists.txt` — compiles whisper.cpp (static) + `jni.cpp` into
+  `libwhisper.so`, with whisper.cpp examples/tests/server disabled.
+- `jni.cpp` — implements `Java_com_sttapp_data_recognition_WhisperNative_*`
+  for `whisperInit(modelPath)`, `whisperTranscribe(ctx, pcm, rate, threads,
+  language)`, `whisperRelease(ctx)`.
+- `whisper.cpp/` — pinned git **submodule** (v1.9.3). Fetch with
+  `git submodule update --init --recursive` (or `bash ml/setup-whisper.sh`).
+
+The `externalNativeBuild` block in `app/build.gradle.kts` is **conditional**:
+it's active only while the submodule directory is present, so the rest of the
+app still builds without the NDK.
+
+- ABI `arm64-v8a` only (already configured) to keep the APK small.
+- Cap threads to `min(cpuCount, 4)` on 4 GB devices (in `WhisperTranscriber`).
+- JNI symbol names must match `jni.cpp` exactly.
+- R8 keep rule for `WhisperNative` is already in `app/proguard-rules.pro`.
 
 ## 2. TTS — Piper (MVP 3, deferred)
 

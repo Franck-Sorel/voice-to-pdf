@@ -4,7 +4,7 @@
 
 Voice to PDF is a **single-APK, offline-first Android app**. All heavy work
 happens on-device: audio capture, PCM decoding, speech inference
-(sherpa-onnx), LLM planning (MVP 2/3), and PDF rendering. The architecture is
+(whisper.cpp), LLM planning (MVP 2/3), and PDF rendering. The architecture is
 deliberately boring — small, layered, and easy to test — because the hard
 problems here are *performance on 4 GB devices* and *native integration*, not
 architectural novelty.
@@ -33,11 +33,11 @@ flowchart TB
         Prefs["Settings (SharedPreferences)"]
         Recorder["AndroidAudioRecorder\n(MediaRecorder)"]
         PCM["MediaCodecPcmDecoder"]
-        Speech["SherpaOnnxStt\n(sherpa-onnx AAR)"]
+        Speech["WhisperNative (JNI)\n+ WhisperTranscriber"]
         PDF["AndroidPdfExporter\n(PdfDocument)"]
     end
     subgraph Native["ML runtimes (bundled)"]
-        onnx["sherpa-onnx\n(Whisper .onnx + Piper)"]
+        onnx["whisper.cpp\n(ggml .bin models)"]
         llm["llama.cpp\n(Phi-3-mini / Gemma-2-2B,\nMVP 2/3)"]
     end
 
@@ -78,7 +78,7 @@ Dependency direction is always inward: `ui → data → core`.
 2. Stop            AudioRecorder.stop() -> durationMs + file
 3. Persist         Session(TRANSCRIBING) inserted into Room
 4. Decode          MediaCodecPcmDecoder -> 16 kHz mono ShortArray
-5. Infer           sherpa-onnx OfflineRecognizer (Whisper base .onnx)
+5. Infer           whisper.cpp (ggml-base-q8_0.bin) via WhisperNative
 6. Store           Session(READY, transcript)
 7. Edit            SessionScreen OutlinedTextField (draft)
 8. Export          PdfExporter.export(request, contentUri) -> A4 PDF
@@ -102,18 +102,22 @@ flowchart LR
     EXT --> MC["MediaCodec\ndecoder -> PCM16"]
     MC --> MIX["stereo -> mono\n(average channels)"]
     MIX --> RES["resample -> 16 kHz\n(TODO, see below)"]
-    RES --> W["sherpa-onnx\nOfflineRecognizer\n(Whisper base)"]
+    RES --> W["whisper.cpp\n(ggml base q8_0)"]
 ```
 
 - Our recorder already outputs 16 kHz mono AAC, so decode is a passthrough.
 - Imported files may be 44.1 kHz stereo. Channel downmix is implemented;
-  **sample-rate conversion to 16 kHz is a TODO** in `MediaCodecPcmDecoder`
-  (it currently asserts the source is 16 kHz). The resampler is a
-  self-contained ~50-line function (linear/SoX-style interpolation) and is the
-  first natural implementation task.
+  sample-rate conversion to 16 kHz uses a linear interpolator in
+  `MediaCodecPcmDecoder` — see below.
 - Whisper expects raw 16-bit little-endian mono PCM at 16 kHz.
-- Speech runs on **sherpa-onnx** (Whisper `base` exported to ONNX) — see
-  `docs/DECISIONS.md` ADR-009 and `ml/README.md`.
+- Speech runs on **whisper.cpp** with GGML INT8 models (`ggml-base-q8_0.bin`
+  ~78 MB, default; `ggml-tiny-q8_0.bin` ~41.5 MB, low-RAM) — see
+  `docs/DECISIONS.md` ADR-015 and `ml/README.md`.
+- **Memory bound:** `MediaCodecPcmDecoder` currently materializes the whole
+  decoded PCM in memory (~2× audio duration bytes). A 90-min lecture is
+  ~170 MB of `ShortArray` before the model loads — fine on 4 GB, but keep it
+  in mind: for very long recordings, stream PCM to whisper.cpp in chunks or
+  cap session length (see `docs/NFR.md §3/§6`).
 
 ## 5. Storage schema
 
@@ -146,7 +150,7 @@ Room schema JSON is exported to `app/schemas/` (append-only — see
 | UI | Main | Compose |
 | Recording | Main (MediaRecorder does its own I/O) | `AudioRecorder` |
 | PCM decode | Background | `Dispatchers.Default` via `withContext` |
-| Speech inference (sherpa-onnx) | Background, CPU | `Dispatchers.Default`; blocking native call |
+| Speech inference (whisper.cpp) | Background, CPU | `Dispatchers.Default`; blocking native call |
 | LLM planning (MVP 2/3) | Background, CPU | llama.cpp, loaded on demand |
 | Room | Main-safe | Suspend DAO + Flow |
 | PDF render + disk write | Background | `Dispatchers.IO` |
@@ -156,11 +160,13 @@ hop off the main thread. ViewModels launch in `viewModelScope`.
 
 ## 7. Offline-first design
 
-- No permissions for network. No HTTP client dependency at all in MVP 1.
-- Model files live in `filesDir/models/`: Whisper/Piper `.onnx` for
-  sherpa-onnx, GGUF for llama.cpp. MVP 1 bundles the speech models into the
-  APK; larger LLM models (MVP 2/3) become a one-time optional download with a
-  clear consent screen, then work offline (see `ml/README.md`).
+- No mandatory network. Networking is limited to **opt-in, minimal, PII-free
+  diagnostics and update checks** sent only when the user consents and
+  connectivity exists (see `docs/NFR.md "Telemetry & privacy"`).
+- Model files live in `filesDir/models/`: GGML `.bin` for whisper.cpp, GGUF
+  for llama.cpp. MVP 1 bundles `ggml-base-q8_0.bin` into the APK; larger LLM
+  models (MVP 2/3) become a one-time optional download with a clear consent
+  screen, then work offline (see `ml/README.md`).
 - If the device has < 4 GB RAM at launch, show a "requires 4 GB" gate screen
   (risk mitigation). The MVP 3 agent additionally swaps Phi-3-mini for
   Gemma-2-2B and load/unloads the LLM on demand (see §10).
@@ -181,10 +187,12 @@ hop off the main thread. ViewModels launch in `viewModelScope`.
 
 ## 9. Security & privacy
 
-- Default path: **zero data leaves the device**.
-- RECORD_AUDIO is the only runtime permission in MVP 1.
+- Default path: **zero personal data leaves the device**.
+- RECORD_AUDIO is the only *user-facing* runtime permission in MVP 1.
 - Import/export use Storage Access Framework (scoped storage, no broad storage
   permission).
+- The optional telemetry (opt-in) sends only minimal, PII-free diagnostics —
+  see `docs/NFR.md "Telemetry & privacy"`.
 - The optional cloud "enhance" button (MVP 2) must show explicit "uses your
   data over the network" consent before any upload.
 - The MVP 3 AccessibilityService is a sensitive, visible capability: it must
@@ -207,10 +215,10 @@ optional — the app works without it.
 │                        ANDROID APP (Kotlin)                          │
 │                                                                      │
 │  ┌─────────────┐     ┌──────────────────┐     ┌──────────────────┐  │
-│  │  sherpa-onnx │     │   llama.cpp      │     │  Accessibility   │  │
+│  │  whisper.cpp │     │   llama.cpp      │     │  Accessibility   │  │
 │  │  (STT)      │────►│   (LLM planner)  │────►│  Service         │  │
 │  │  Whisper     │     │   Phi-3-mini     │     │  (executor)      │  │
-│  │  base .onnx  │     │   Q4, 3.8B      │     │  tap/scroll/type │  │
+│  │  base .bin   │     │   Q4, 3.8B      │     │  tap/scroll/type │  │
 │  └──────┬──────┘     └────────┬─────────┘     └────────┬─────────┘  │
 │         │                     │                         │            │
 │         │              ┌──────▼───────┐                  │            │
@@ -222,9 +230,8 @@ optional — the app works without it.
 │         │              └──────────────┘                  │            │
 │         │                                                │            │
 │         │         ┌──────────────────┐                   │            │
-│         │         │  sherpa-onnx     │◄──────────────────┘            │
-│         │         │  (TTS)           │   "Done. Email sent."          │
-│         │         │  Piper .onnx     │                                │
+│         │         │   Piper TTS      │◄──────────────────┘            │
+│         │         │  (MVP 3)         │   "Done. Email sent."          │
 │         │         └────────┬─────────┘                                │
 │         │                  │                                          │
 │         ▼                  ▼                                          │
@@ -237,8 +244,8 @@ optional — the app works without it.
 | Component | RAM | Notes |
 |-----------|-----|-------|
 | Android OS + system | ~1.2 GB | Baseline |
-| sherpa-onnx STT (Whisper base) | ~200 MB | Loaded only during transcription |
-| sherpa-onnx TTS (Piper) | ~150 MB | Loaded only during speech |
+| whisper.cpp STT (Whisper base q8_0) | ~150–300 MB | Loaded only during transcription |
+| Piper TTS | ~150 MB | Loaded only during speech (MVP 3) |
 | llama.cpp (Phi-3-mini Q4) | ~2.5 GB | **Bottleneck** |
 | App UI + AccessibilityService | ~150 MB | |
 | **Total peak** | **~4.2 GB** | ⚠️ Tight — see mitigation |
@@ -261,7 +268,7 @@ interface ToolExecutor {          // implemented by the AccessibilityService
     suspend fun scroll(direction: Direction): Result<Unit>
 }
 
-interface TtsEngine {             // Piper via sherpa-onnx
+interface TtsEngine {             // Piper, engine TBD at MVP 3 kickoff
     suspend fun speak(text: String)
 }
 ```

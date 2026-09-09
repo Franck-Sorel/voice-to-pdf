@@ -14,27 +14,29 @@ benchmark).
   is the target; armeabi-v7a optional).
 - Run at every release on a reference device list (see `docs/TESTING.md`).
 
-## 2. APK size ≤ 80 MB
+## 2. APK size ≤ 100 MB (bundled `base`)
 
 | Target | Measurement |
 |--------|-------------|
-| ≤ 80 MB | `ls -lh app/build/outputs/apk/release/app-release.apk` in CI; fail the release job if exceeded. |
+| ≤ 100 MB release APK | `ls -lh app/build/outputs/apk/release/app-release.apk` in CI; fail the release job if exceeded. |
 
-Budget breakdown (indicative):
+Budget breakdown (indicative — whisper.cpp + GGML `base` q8_0):
 
 | Component | Size |
 |-----------|------|
 | App code + Compose | ~12 MB |
-| sherpa-onnx AAR (arm64-v8a) | ~5 MB |
-| Whisper `base` ONNX model (bundled default) | ~74 MB |
-| **Total** | **~91 MB** ⚠️ |
+| libwhisper.so (arm64-v8a) | ~8 MB |
+| `ggml-base-q8_0.bin` (bundled default, INT8) | ~78 MB |
+| **Total** | **~98 MB** ✅ within ceiling |
 
-> ⚠️ Bundling `base` (~74 MB) exceeds the 80 MB target. **Decision needed at
-> implementation time:** bundle `tiny` (~39 MB) to hit the budget and offer
-> `base` as an optional one-time download, or accept a larger APK and ship
-> `base`. The scaffold defaults the user-facing setting to `BASE` but the
-> bundled model, if any, must be chosen to satisfy this NFR. A bundled Piper
-> TTS voice (MVP 3) would add ~20 MB — keep it an optional download.
+- The 100 MB ceiling matches the realistic Play base-limit and broad-device
+  install needs. It is attainable because whisper.cpp GGML models are far
+  smaller than sherpa-onnx's ONNX exports (which were the original blocker —
+  see `docs/DECISIONS.md` ADR-015), and it replaces the earlier unachievable
+  80 MB number that no bundled ONNX model could meet.
+- Default bundle: `base` q8_0 (~78 MB). Low-RAM optional/fallback:
+  `tiny` q8_0 (~41.5 MB) → ~60 MB APK. A bundled Piper TTS voice (MVP 3) would
+  add ~20 MB — keep it an optional download.
 
 ## 3. Battery ≤ 15% per session
 
@@ -57,7 +59,10 @@ Optimizations if exceeded:
 
 | Target | Measurement |
 |--------|-------------|
-| 100% of P0 works in airplane mode | Manual test matrix: full happy path in airplane mode on reference devices. CI static check: no `uses-permission android:name="android.permission.INTERNET"` and no network client dependency in `build.gradle.kts`. |
+| 100% of P0 works in airplane mode | Manual test matrix: full happy path in airplane mode on reference devices. All speech/PDF features are fully local and never require a network call. |
+
+`INTERNET` permission is declared for **opt-in telemetry and update checks
+only** (see "Telemetry & privacy" below); no feature depends on it.
 
 ## 6. Memory (4 GB devices)
 
@@ -67,6 +72,11 @@ Optimizations if exceeded:
 
 Whisper `base` on 4 GB devices is expected to peak ~600–900 MB RSS during
 inference; `small` may exceed it — hence the model-size warning in settings.
+
+**Bounded-audio note:** `MediaCodecPcmDecoder` currently materializes the full
+decoded PCM in RAM (~2× audio-duration bytes). For devices at 4 GB and very
+long recordings, stream PCM to whisper.cpp in chunks or cap session length
+(this is a known 4 GB risk — see `docs/ARCHITECTURE.md §4`).
 
 ## 7. Min Android & device reach
 
@@ -98,10 +108,34 @@ inference; `small` may exceed it — hence the model-size warning in settings.
 | Gate | Frequency |
 |------|-----------|
 | Unit tests + lint + assembleDebug | Every commit (CI) |
-| APK size check | Every commit (CI, release config) |
-| No-INTERNET static check | Every commit (CI) |
+| Release APK size check (≤ 100 MB) + signed release publish | Every tag (CI) |
 | Transcription speed + battery benchmarks | Every release |
 | Manual offline happy path | Every release |
+
+---
+
+## Telemetry & privacy (opt-in)
+
+The app is **offline-first**: all P0 features work with no network. It may
+additionally send **minimal, non-identifying diagnostics** only when **all**
+of these hold:
+
+- The user has **explicitly opted in** (a visible, in-app toggle/consent;
+  never silently without consent).
+- Connectivity currently exists.
+- The payload is **least-data and PII-free**: session completion/CRT counts,
+  an anonymous install id (no IMEI/phone/email/location), and coarse RTF/RAM
+  benchmark samples. No audio, no transcript text, no contacts.
+
+| Requirement | Measurement |
+|-------------|-------------|
+| Opt-in before any network send | Manual review + instrumented test: no send before consent |
+| Least-data / no PII | Code review of the payload builder; strip audio/text/identifiers |
+| No functional dependence on network | Offline full-happy-path test in airplane mode (NFR §5) |
+
+Until this is built, the app declares `INTERNET` but sends nothing. The
+"share diagnostics via WhatsApp" flow (export a local log) is the zero-
+infrastructure fallback for the first test rounds.
 
 ---
 
@@ -113,8 +147,8 @@ Applies when the voice agent (PRD §7) is installed. Speech targets the same
 | Component | RAM | Notes |
 |-----------|-----|-------|
 | Android OS + system | ~1.2 GB | Baseline |
-| sherpa-onnx STT (Whisper base) | ~200 MB | Loaded only during transcription |
-| sherpa-onnx TTS (Piper) | ~150 MB | Loaded only during speech |
+| whisper.cpp STT (Whisper base q8_0) | ~150–300 MB | Loaded only during transcription |
+| Piper TTS | ~150 MB | Loaded only during speech (MVP 3) |
 | llama.cpp (Phi-3-mini Q4) | ~2.5 GB | **Bottleneck** |
 | App UI + AccessibilityService | ~150 MB | |
 | **Total peak** | **~4.2 GB** | ⚠️ Exceeds the 4 GB budget |

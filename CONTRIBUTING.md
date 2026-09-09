@@ -28,8 +28,8 @@ note-taking for students in low-connectivity regions.
 
 See `docs/ROADMAP.md`. Highest-value first contributions:
 
-- 16 kHz resampling in `MediaCodecPcmDecoder`
-- sherpa-onnx ML runtime integration (`ml/README.md`) and CI for it
+- whisper.cpp native build (`ml/README.md`, CMake/NDK) and CI for it
+- Opt-in, minimal telemetry (NFR "Telemetry & privacy") and its tests
 - Instrumented tests (Room DAO, Compose UI)
 
 ## Code of conduct

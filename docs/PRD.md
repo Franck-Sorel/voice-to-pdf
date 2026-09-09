@@ -62,7 +62,7 @@ handwriting, expensive typists, or unreliable internet for transcription. The
 | Requirement | Target |
 |-------------|--------|
 | Transcription speed | ≤ 1.5× real-time on 4 GB RAM device (30 min audio → ≤ 45 min processing) |
-| APK size | ≤ 80 MB (Whisper tiny is ~39 MB) |
+| APK size | ≤ 100 MB (bundled Whisper `base` GGML q8_0 ~78 MB) |
 | Battery | ≤ 15% drain per 30-min recording + transcription session |
 | Storage | Transcripts as plain text; audio retained only if user opts in |
 | Offline | 100% of P0 features work in airplane mode |
@@ -180,7 +180,7 @@ approves before PDF export.
 ```mermaid
 flowchart LR
     subgraph MVP1["MVP 1 (foundation)"]
-        A["Record / Import"] --> B["Transcribe (sherpa-onnx Whisper)"]
+        A["Record / Import"] --> B["Transcribe (whisper.cpp)"]
         B --> C["Edit (manual)"]
         C --> D["Export PDF (plain)"]
     end
@@ -218,11 +218,11 @@ account.
 
 ```mermaid
 flowchart LR
-    MIC["Microphone"] --> STT["sherpa-onnx STT\n(Whisper base)"]
+    MIC["Microphone"] --> STT["whisper.cpp STT\n(Whisper base)"]
     STT --> LLM["llama.cpp LLM\n(Phi-3-mini / Gemma-2-2B Q4)"]
     LLM --> TOOLS["Tool calls:\ntap(x,y) / type(str) /\nscroll() / openApp()"]
     TOOLS --> AX["AccessibilityService\nexecutor"]
-    AX --> TTS["sherpa-onnx TTS\n(Piper)"]
+    AX --> TTS["Piper TTS\n(MVP 3)"]
     TTS --> SPK["Speaker:\n\"Done. Email sent.\""]
     SPK --> MIC
 ```
@@ -260,26 +260,26 @@ explicit per-action user confirmation dialog.
 
 ### 7.7 Proposed stack — why this and not the alternatives
 
-Rationale records live in `docs/DECISIONS.md` (ADR-009 → ADR-013).
+Rationale records live in `docs/DECISIONS.md` (ADR-015 and ADR-011 → ADR-013).
 
 | Layer | Choice | Why THIS, not the alternatives |
 |-------|--------|-------------------------------|
 | Language | Kotlin | AccessibilityService, NDK, Camera2 are native Android APIs. Swift → iOS only. Flutter/RN → no direct AccessibilityService access + JNI bridge overhead. Java → no advantage. |
-| STT | sherpa-onnx (Whisper `base` via ONNX) | ~50× faster than whisper.cpp on the same model (RTF 0.13 vs 3.52). Single C library with Kotlin bindings. No GMS dependency. Vosk → worse accuracy (15%+ WER). Google Speech API → network + per-char cost. |
-| TTS | sherpa-onnx (Piper) | Same library as STT — zero added dependency, same ONNX Runtime session. Cloud TTS → 300–800 ms latency, $5–330/mo, privacy violation. Android default TTS → robotic. Kokoro → 2× slower, 5× larger, marginal gain. |
+| STT | whisper.cpp (Whisper `base` GGML q8_0) | Mature MIT C core; base accuracy at ~99 MB APK (ADR-015). sherpa-onnx's ONNX exports are too large (base int8 ≈ 152 MB) to bundle at this accuracy. Vosk → worse accuracy (15%+ WER). Google Speech API → network + per-char cost. faster-whisper → not Android-viable. |
+| TTS | Piper (engine TBD at MVP 3) | Cloud TTS → 300–800 ms latency, $5–330/mo, privacy violation. Android default TTS → robotic. Kokoro → 2× slower, 5× larger. Decoupled from the STT runtime (ADR-010). |
 | LLM (planner) | llama.cpp (Q4 Phi-3-mini 3.8B or Gemma-2-2B) | Runs on CPU in 2–3 GB RAM. No server, no framework. Ollama → separate daemon, desktop design. LangChain/LangChain4j → 50+ MB of Java deps for a single plan→act loop. MLC-LLM → viable but less mature on Android. |
 | UI execution | AccessibilityService (native API) | No root, no ADB, no Shizuku; user grants once in Settings. ADB → not field-viable. Root → unavailable. Shizuku → one-time ADB setup. Vision (screenshot + VLM) → 10× slower, needs 7B+ VLM, 4+ GB RAM. Accessibility tree is structured & free. |
 | UI framework | Jetpack Compose | Standard for new Android apps. |
 | Storage | Room (SQLite) | Session history, action logs, model cache. |
-| Build | Gradle + NDK (CMake for ONNX) | Standard; no Bazel/custom toolchain. |
+| Build | Gradle + NDK (CMake for whisper.cpp) | Standard; no Bazel/custom toolchain. |
 
 ### 7.8 Resource budget on a 4 GB RAM device
 
 | Component | RAM | Notes |
 |-----------|-----|-------|
 | Android OS + system | ~1.2 GB | Baseline |
-| sherpa-onnx STT (Whisper base) | ~200 MB | Loaded only during transcription |
-| sherpa-onnx TTS (Piper) | ~150 MB | Loaded only during speech |
+| whisper.cpp STT (Whisper base q8_0) | ~150–300 MB | Loaded only during transcription |
+| Piper TTS | ~150 MB | Loaded only during speech |
 | llama.cpp (Phi-3-mini Q4) | ~2.5 GB | **This is the bottleneck** |
 | App UI + AccessibilityService | ~150 MB | |
 | **Total peak** | **~4.2 GB** | ⚠️ Tight — see mitigation |
@@ -295,17 +295,17 @@ Rationale records live in `docs/DECISIONS.md` (ADR-009 → ADR-013).
 
 | Rejected | Reason |
 |----------|--------|
-| Flutter / React Native | Can't access AccessibilityService directly; JNI bridge to ONNX adds 50–200 ms latency per call. For a voice agent where every 100 ms matters, native is non-negotiable. |
+| Flutter / React Native | Can't access AccessibilityService directly; JNI/NDK bridge for on-device ML adds 50–200 ms latency per call. For a voice agent where every 100 ms matters, native is non-negotiable. |
 | Ollama | Server-side inference framework requiring a running daemon; designed for desktop/server. On Android you'd run a local HTTP server for no reason — llama.cpp's C API is called directly from Kotlin. |
 | LangChain4j / Spring AI | Orchestration frameworks for multi-step RAG pipelines. Our loop is `transcript → LLM → action → result` — one prompt, one tool call. 50+ MB of dependencies for zero benefit. |
 | Vision-based agent (screenshot + VLM) | Requires a 7B+ vision model (4+ GB RAM), 10× slower per step. The accessibility tree gives structured, labeled UI elements for free. |
 | ADB / Root / Shizuku | ADB needs USB/wireless debugging (breaks in the field). Root isn't available on student devices. Shizuku needs one-time ADB setup. AccessibilityService is the only zero-friction, production-viable path. |
 | Google Speech API / Cloud STT | Requires network, per-character cost, privacy violation. The entire point is offline. |
-| whisper.cpp | ~50× slower than sherpa-onnx on the same model on Android (RTF 3.52 vs 0.07 for tiny). No reason to keep it. |
+| sherpa-onnx (for STT) | Verified ONNX exports are far larger than nominal (base int8 ≈ 152 MB), so they can't bundle base accuracy within ~100 MB for broad-device distribution (ADR-015). |
 
 ### 7.10 Relationship to MVP 1 / MVP 2
 
-- Reuses MVP 1's speech pipeline (now sherpa-onnx), Room storage, and app structure.
+- Reuses MVP 1's speech pipeline (whisper.cpp), Room storage, and app structure.
 - Ships as a separate APK or in-app module, like MVP 2.
 - Fully optional: a user who only installs MVP 1 never sees it.
 - Success metrics: to be defined at MVP 3 kickoff (install base, per-task success rate, offline completion %).

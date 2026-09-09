@@ -13,10 +13,11 @@
 
 ### M1 — Core flow end-to-end
 
-- [ ] Wire **sherpa-onnx** (Whisper `base` ONNX) as the STT runtime — see
-  `ml/README.md`; pick bundle strategy per `docs/NFR.md §2` (tiny bundled vs
-  base bundled)
-- [ ] Implement 16 kHz resampling in `MediaCodecPcmDecoder`
+- [ ] Bundle the STT runtime + model: build `libwhisper.so` (arm64-v8a) and run
+  `bash ml/download-models.sh` (`ggml-base-q8_0.bin`, ~78 MB) — see `ml/README.md`
+- [ ] First-launch model copy `assets -> filesDir/models`
+- [ ] Fair RTF benchmark on the target 4 GB device (same model/threads/greedy);
+  lock `base` as default only if ≤ 1.5× real-time
 - [ ] Implement `MediaMetadataRetriever` duration for progress
 - [ ] Wire record → transcribe → READY on a real device
 - [ ] Export PDF to `Downloads/` and share via intent (F6)
@@ -28,9 +29,15 @@
 ### M2 — Polish, robustness, release
 
 - [ ] Foreground service + notification for long transcriptions
+- [ ] Stream PCM to whisper.cpp (or cap session length) so long lectures stay
+  within 4 GB memory (ADR/NFR §6)
 - [ ] Auto-prune `cacheDir` audio after READY (ADR-007)
+- [ ] Opt-in telemetry: minimal, PII-free diagnostics, silent least-data push
+  only when connected (NFR "Telemetry & privacy"); "share log via WhatsApp" fallback
+- [ ] Permanent release keystore (kept + backed up) and CI signing → GitHub
+  Releases → Obtainium distribution
 - [ ] Model-size trade-off warning dialog; optional model download
-- [ ] CI: lint + test + APK-size gate + no-INTERNET check
+- [ ] CI: lint + test + APK-size gate + signed release publish
 - [ ] Crash reporting (opt-in, offline-friendly) + local completion funnel
 - [ ] Beta on Play (internal track) → open test → production
 
@@ -65,7 +72,7 @@ completion in beta telemetry.
 ### M5 — Agent core loop (P0)
 
 - [ ] `:agent` module: AccessibilityService + `ToolExecutor` (tap/type/scroll/openApp)
-- [ ] sherpa-onnx **TTS** (Piper) confirmation speech (F4)
+- [ ] **Piper TTS** confirmation speech (F4, engine TBD at MVP 3 kickoff)
 - [ ] llama.cpp planner: Phi-3-mini 3.8B Q4 (6 GB) / Gemma-2-2B Q4 (4 GB) — load on demand
 - [ ] STT wake/command input through the existing speech pipeline (F1)
 - [ ] Per-action confirmation dialog for sensitive actions (F6, hard boundary PRD §7.5)
@@ -95,8 +102,8 @@ device without OOM; every sensitive action shows the allow dialog.
 - MVP 1 must be fully usable without MVP 2 and MVP 3 (PRD §6, §7.10).
 - MVP 2 and MVP 3 are separate APKs or in-app modules, updateable
   independently.
-- sherpa-onnx model bundling (Whisper + Piper) is on the critical path for
-  M1 — start early; a university partnership can host CI for native builds
-  (PRD risk).
-- The scaffold's `WhisperNative` JNI stub is superseded: the real STT
-  implementation uses the sherpa-onnx Android AAR (`ml/README.md`).
+- whisper.cpp model bundling (`ggml-base-q8_0.bin`) + the native CMake build
+  are on the critical path for M1 — start early; a university partnership can
+  host CI for native builds (PRD risk).
+- The STT layer (whisper.cpp behind `Transcriber`) is designed to be reusable
+  across projects (`ml/README.md §6`).

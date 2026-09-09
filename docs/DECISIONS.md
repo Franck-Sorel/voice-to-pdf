@@ -305,7 +305,7 @@ frameworks and every alternative execution path.
 | Alternative | Why not |
 |-------------|---------|
 | Swift | iOS-only |
-| Flutter / React Native | Can't access AccessibilityService directly; JNI bridge to ONNX adds 50–200 ms latency per call. For a voice agent where every 100 ms matters, native is non-negotiable |
+| Flutter / React Native | Can't access AccessibilityService directly; JNI/NDK bridge for on-device ML adds 50–200 ms latency per call. For a voice agent where every 100 ms matters, native is non-negotiable |
 | Java | No advantage, worse ergonomics |
 
 **Rejected stack components (explicit):**

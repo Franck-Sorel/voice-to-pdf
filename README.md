@@ -48,8 +48,8 @@ See [docs/PRD.md](docs/PRD.md) for the full spec, including MVP 2.
 |--------------|-----------------------------------------------|-----|
 | Language     | Kotlin                                        | Native Android + on-device ML |
 | UI           | Jetpack Compose (Material 3)                  | Modern, fast to build |
-| STT          | sherpa-onnx (Whisper `base` via ONNX)         | ~50× faster than whisper.cpp; one C lib with Kotlin bindings |
-| TTS (MVP 3)  | sherpa-onnx (Piper)                           | Same runtime as STT, zero extra dependency |
+| STT          | whisper.cpp (Whisper `base` GGML q8_0)        | Base accuracy at ~99 MB APK; mature portable C core (ADR-015) |
+| TTS (MVP 3)  | Piper (engine TBD at MVP 3)                   | Deferred; independent of the STT runtime |
 | LLM (MVP 2/3)| llama.cpp (Phi-3-mini / Gemma-2-2B Q4)        | On-device planner, no server, no framework |
 | UI execution (MVP 3) | AccessibilityService (native)         | No root/ADB/Shizuku; one-time grant in Settings |
 | PDF          | Android `PdfDocument` (built-in)              | Zero deps, Apache-2.0, keeps APK small |
@@ -80,13 +80,13 @@ STT-app/
 │       │   │   │   ├── local/      # Room: entity, DAO, database
 │       │   │   │   ├── settings/   # Preferences-backed settings
 │       │   │   │   ├── audio/      # MediaRecorder implementation
-│       │   │   │   ├── recognition/# sherpa-onnx STT + PCM decoder
+│       │   │   │   ├── recognition/# whisper.cpp STT (JNI) + PCM decoder
 │       │   │   │   └── pdf/        # PdfDocument implementation
 │       │   │   ├── di/             # Hilt modules
 │       │   │   └── ui/             # Compose screens (theme/navigation/home/…)
 │       │   └── res/
 │       └── test/                   # JVM unit tests
-├── ml/                             # ML runtimes & models (sherpa-onnx, llama.cpp)
+├── ml/                             # ML runtimes & models (whisper.cpp, llama.cpp)
 ├── docs/                           # All documentation (see below)
 ├── gradle/libs.versions.toml       # Version catalog
 └── .github/workflows/ci.yml        # CI
@@ -114,9 +114,9 @@ Prerequisites: **JDK 17**, an Android SDK (Android Studio Ladybug+ recommended).
 ./gradlew lintDebug
 ```
 
-> ⚠️ Transcription (F2) requires bundling the sherpa-onnx runtime (Whisper
-> model) — the scaffold ships with a stubbed STT bridge. See
-> [docs/SETUP.md](docs/SETUP.md) and [ml/README.md](ml/README.md).
+> ⚠️ Transcription (F2) requires building the whisper.cpp runtime (`libwhisper.so`)
+> and bundling a GGML model — the scaffold ships with a stubbed STT bridge.
+> See [docs/SETUP.md](docs/SETUP.md) and [ml/README.md](ml/README.md).
 
 ---
 
@@ -131,14 +131,14 @@ Prerequisites: **JDK 17**, an Android SDK (Android Studio Ladybug+ recommended).
 | [docs/TESTING.md](docs/TESTING.md) | Test strategy: unit / instrumented / manual device matrix |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | MVP 1 → MVP 2 → MVP 3 milestones and definition of done |
 | [docs/SETUP.md](docs/SETUP.md) | Build environment, signing, ML runtimes, APK size budget |
-| [ml/README.md](ml/README.md) | sherpa-onnx (STT + TTS) and llama.cpp (LLM) integration plan |
+| [ml/README.md](ml/README.md) | whisper.cpp (STT) and llama.cpp (LLM) integration plan |
 
 ---
 
 ## Status
 
 This is a **scaffold**: the structure, build files, domain model, Room layer,
-PDF export, and UI skeleton are in place. sherpa-onnx STT integration and full
+PDF export, and UI skeleton are in place. whisper.cpp STT integration and full
 end-to-end transcription are the next implementation milestones — see
 [docs/ROADMAP.md](docs/ROADMAP.md).
 

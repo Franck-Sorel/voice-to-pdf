@@ -32,49 +32,57 @@ The debug APK lands in `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## 3. Signing a release build
 
-Never commit keystores. Create `keystore.properties` locally (gitignored):
+Never commit keystores. Generate a **permanent** release keystore once (keep
+it backed up offline — losing it means you can never update sideloaded
+installs), then copy `keystore.properties.example` → `keystore.properties`
+(gitignored) and fill it in:
+
+```bash
+keytool -genkeypair -v -keystore release.keystore \
+  -alias voicetopdf -keyalg RSA -keysize 2048 -validity 10000 -storetype PKCS12
+```
 
 ```properties
 storeFile=/absolute/path/to/release.keystore
 storePassword=...
-keyAlias=...
+keyAlias=voicetopdf
 keyPassword=...
 ```
 
-`app/build.gradle.kts` currently has no release signing config (unsigned
-release). Add a `signingConfigs { create("release") { ... } }` block wired from
-`keystore.properties` before distributing — and keep it out of VCS.
+`app/build.gradle.kts` reads `keystore.properties` **if present** (release
+builds are then signed); if absent, release builds are unsigned — CI signs via
+GitHub secrets (see `.github/workflows/ci.yml`). The same keystore later
+enables migrating sideloaded testers to Play with the same signing key.
 
-## 4. ML runtimes (required for transcription, F2)
+## 4. ML runtime (required for transcription, F2)
 
-Transcription uses **sherpa-onnx** (Whisper `base` ONNX). The real
-implementation uses sherpa-onnx's official Android AAR — the scaffold's
-`WhisperNative` JNI stub is superseded (ADR-009). See
-[ml/README.md](../ml/README.md) for the full plan. In short:
+Transcription uses **whisper.cpp** (GGML). The `WhisperNative` JNI bridge is
+the intended runtime seam (ADR-015). See [ml/README.md](../ml/README.md) for
+the full plan. In short:
 
-1. Add the sherpa-onnx AAR to `gradle/libs.versions.toml` + `app/build.gradle.kts`.
-2. Bundle a Whisper ONNX model + `tokens.txt` under
-   `app/src/main/assets/models/` and copy to `filesDir/models/` on first
-   launch (adapt `WhisperTranscriber.resolveModelFile`).
-3. Replace the `WhisperNative` JNI stub with a `SherpaOnnxTranscriber`
-   implementing the existing `Transcriber` interface.
+1. `bash ml/download-models.sh` → fetches `ggml-base-q8_0.bin` (~78 MB) into
+   `app/src/main/assets/models/`.
+2. Build `libwhisper.so` for `arm64-v8a` via CMake/NDK (see `ml/README.md`)
+   and place it under `app/src/main/jniLibs/arm64-v8a/`.
+3. First launch copies the model from `assets` to `filesDir/models/`
+   (`WhisperTranscriber.resolveModelFile` is wired for GGML `.bin` names).
 4. Verify with `./gradlew assembleDebug`.
 
-Until step 1–3 are done, tapping "Start recording → Stop" runs the pipeline
+Until steps 1–2 are done, tapping "Start recording → Stop" runs the pipeline
 but fails at the STT step — expected; see `docs/ROADMAP.md` M1.
 
 ## 5. APK size budget
 
 See `docs/NFR.md §2`. Gate: `ls -lh app/build/outputs/apk/release/app-release.apk`
-must be ≤ 80 MB or the release CI job fails. Decide bundled model accordingly
-(Whisper `base` ONNX ~74 MB; a bundled Piper voice adds ~20 MB).
+must be ≤ 100 MB or the release CI job fails. Bundle `ggml-base-q8_0.bin`
+(~78 MB → ~98 MB APK); `tiny` q8_0 is the low-RAM fallback.
 
 ## 6. Common issues
 
 | Symptom | Fix |
 |---------|-----|
-| STT fails / model not loaded | Add the sherpa-onnx AAR + bundle/copy the Whisper ONNX model (step 4) |
-| Model file not found | Bundle model + copy to `filesDir/models/` |
+| `System.loadLibrary("whisper")` UnsatisfiedLinkError | Build & bundle `libwhisper.so` (step 4) |
+| Model file not found | Run `bash ml/download-models.sh` + copy to `filesDir/models/` |
 | KSP/AGP version conflict | Keep Kotlin 2.3.x + KSP 2.3.x as pinned in the catalog |
 | `kapt` requested | This project uses KSP only; do not add kapt (incompatible with built-in Kotlin) |
 

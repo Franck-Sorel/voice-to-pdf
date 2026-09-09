@@ -42,10 +42,19 @@ Guidelines: no Android framework, no Robolectric for pure code, use
 
 | Area | What to cover |
 |------|---------------|
+| App boot smoke | target context resolves (done: `ExampleInstrumentedTest`) |
 | Room DAO | insert → observeAll order, observeById, update, deleteById |
 | SessionRepository | full CRUD against an in-memory Room DB |
 | SettingsRepository | persist model/language across recreation |
 | Compose UI | record button state changes; sessions list renders; edit field saves |
+
+**Running them in CI.** Our APK is **`arm64-v8a`-only** (release size), so a
+standard x86_64 GitHub-hosted emulator **cannot install it**. The
+GitHub-hosted `ci.yml` therefore runs JVM tests + lint only; device/instrumented
+tests are run against **Firebase Test Lab `physical` (arm64) devices** — e.g. a
+`Robo` smoke test or `connectedDebugAndroidTest` relayed there (free Spark tier:
+5 physical runs/day). This keeps real-device coverage without an emulator-ABI
+mismatch. See `docs/SETUP.md` for enabling Firebase at some point.
 
 ## 5. Manual test matrix (every release)
 

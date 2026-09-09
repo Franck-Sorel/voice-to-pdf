@@ -135,6 +135,22 @@ Prerequisites: **JDK 17**, an Android SDK (Android Studio Ladybug+ recommended).
 | [docs/ROADMAP.md](docs/ROADMAP.md) | MVP 1 → MVP 2 → MVP 3 milestones and definition of done |
 | [docs/SETUP.md](docs/SETUP.md) | Build environment, signing, ML runtimes, APK size budget |
 | [ml/README.md](ml/README.md) | whisper.cpp (STT) and llama.cpp (LLM) integration plan |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute, ground rules, milestones |
+| [SECURITY.md](SECURITY.md) | How to report a vulnerability responsibly |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community guidelines |
+
+## CI/CD & hygiene
+
+GitHub Actions workflows under `.github/workflows/`:
+
+| Workflow | Runs | Purpose |
+|----------|------|---------|
+| `ci.yml` | every push / PR / `v*` tag / manual | lint, unit tests, debug + signed release build, **100 MB size gate**, **`apksigner` signature verify**, publish signed APK to GitHub Releases (arm64, for Obtainium). Least-privilege permissions + Gradle cache + wrapper validation. |
+| `dependency-review.yml` | every PR | fails on high-severity dependency advisories |
+| `codeql.yml` | push / PR / weekly | CodeQL SAST for C/C++ + Kotlin |
+| `pr-title.yml` | every PR | enforces Conventional Commits titles |
+
+Dependency bumps are proposed by **Dependabot** (`.github/dependabot.yml`).
 
 ---
 
@@ -145,4 +161,4 @@ PDF export, and UI skeleton are in place. whisper.cpp STT integration and full
 end-to-end transcription are the next implementation milestones — see
 [docs/ROADMAP.md](docs/ROADMAP.md).
 
-License: [MIT](LICENSE).
+License: [MIT](LICENSE). Report security issues via [SECURITY.md](SECURITY.md).

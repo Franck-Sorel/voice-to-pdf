@@ -1,0 +1,31 @@
+name: PR title (Conventional Commits)
+
+# Enforces Conventional Commits on pull-request titles so the changelog and
+# release notes (softprops/action-gh-release) stay clean. Matches the
+# convention in AGENTS.md / CONTRIBUTING.md.
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  lint:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            build
+            ci
+            chore
+            refactor
+            test
+          requireScope: false

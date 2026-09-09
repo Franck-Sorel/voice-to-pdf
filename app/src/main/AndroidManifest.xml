@@ -5,6 +5,12 @@
          still installs on devices without a microphone. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- Opt-in telemetry + update checks (decision: allow opt-in INTERNET).
+         The app stays 100% offline-functional; network is used ONLY for
+         minimal, PII-free diagnostics when the user consents AND connectivity
+         exists. See docs/NFR.md "Telemetry & privacy". -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <uses-feature
         android:name="android.hardware.microphone"
         android:required="false" />

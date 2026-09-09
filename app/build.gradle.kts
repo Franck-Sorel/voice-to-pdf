@@ -1,9 +1,24 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
 }
+
+fun loadKeystoreProps(): Properties? {
+    // Never commit keystore.properties; it's gitignored (see .gitignore).
+    val rootFile = rootProject.file("keystore.properties")
+    return if (rootFile.exists()) {
+        Properties().apply { load(FileInputStream(rootFile)) }
+    } else {
+        null
+    }
+}
+
+val ksProps: Properties? = loadKeystoreProps()
 
 android {
     namespace = "com.sttapp"
@@ -18,6 +33,24 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
+
+        // Target the common modern ABIs only — keeps APK size minimal.
+        // arm64-v8a covers essentially all 4 GB student devices in the market.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
+    }
+
+    signingConfigs {
+        if (ksProps != null) {
+            create("release") {
+                // keystore.properties must use absolute paths for storeFile.
+                storeFile = file(ksProps.getProperty("storeFile"))
+                storePassword = ksProps.getProperty("storePassword")
+                keyAlias = ksProps.getProperty("keyAlias")
+                keyPassword = ksProps.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -28,6 +61,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            if (ksProps != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -43,6 +79,11 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        jniLibs {
+            // false = .so shipped uncompressed & page-aligned (faster load).
+            // Leave as the default; do not flip to save a few MB.
+            useLegacyPackaging = false
         }
     }
 }

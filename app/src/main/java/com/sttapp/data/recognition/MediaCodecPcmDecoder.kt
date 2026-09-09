@@ -67,7 +67,7 @@ class MediaCodecPcmDecoder @Inject constructor() : PcmDecoder {
      * error, and it's far cheaper than a polyphase/sinc filter for MVP 1.
      */
     private fun resample(input: ShortArray, inputRate: Int, outputRate: Int): ShortArray {
-        if (inputRate == outputRate) return input
+        if (inputRate == outputRate || input.isEmpty()) return input
         val ratio = outputRate.toDouble() / inputRate.toDouble()
         val out = ShortArray((input.size * ratio).toInt().coerceAtLeast(1))
         for (i in out.indices) {

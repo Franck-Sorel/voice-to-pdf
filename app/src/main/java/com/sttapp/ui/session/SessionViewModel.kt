@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sttapp.core.model.Session
+import com.sttapp.core.pdf.PdfDestination
 import com.sttapp.core.pdf.PdfExportRequest
 import com.sttapp.core.pdf.PdfExporter
 import com.sttapp.data.SessionRepository
@@ -69,7 +70,7 @@ class SessionViewModel @Inject constructor(
                         dateLabel = dateLabel,
                         bodyText = current.transcript.orEmpty(),
                     ),
-                    destination,
+                    PdfDestination.ContentUri(destination.toString()),
                 )
             }
         }

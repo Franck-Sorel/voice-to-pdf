@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
+import com.sttapp.core.pdf.PdfDestination
 import com.sttapp.core.pdf.PdfExporter
 import com.sttapp.core.pdf.PdfExportRequest
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -30,8 +31,11 @@ class AndroidPdfExporter @Inject constructor(
 
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 
-    override suspend fun export(request: PdfExportRequest, destination: Uri) {
+    override suspend fun export(request: PdfExportRequest, destination: PdfDestination) {
         withContext(ioDispatcher) {
+            val contentUri = when (destination) {
+                is PdfDestination.ContentUri -> Uri.parse(destination.uriString)
+            }
             val doc = PdfDocument()
             try {
                 val config = request.config
@@ -102,8 +106,8 @@ class AndroidPdfExporter @Inject constructor(
                     doc.finishPage(page)
                 }
 
-                val output = context.contentResolver.openOutputStream(destination, "w")
-                    ?: error("Unable to open destination $destination")
+                val output = context.contentResolver.openOutputStream(contentUri, "w")
+                    ?: error("Unable to open destination $contentUri")
                 output.use { doc.writeTo(it) }
             } finally {
                 doc.close()

@@ -14,10 +14,10 @@ import javax.inject.Singleton
  * dependencies; works for any container/format the platform can decode
  * (MP3, AAC, OGG/Vorbis, WAV, M4A).
  *
- * Gotcha: [MediaCodec] always outputs at the source sample rate. Downsampling
- * to 16 kHz from e.g. 44.1 kHz is NOT implemented yet — see
- * docs/ARCHITECTURE.md#audio-decoding for the plan. For now sources already
- * at 16 kHz (our recorder output) pass through.
+ * [MediaCodec] always outputs at the source sample rate, so the decoded mono
+ * PCM is resampled to [PcmDecoder]'s target (16 kHz) with a linear
+ * interpolator — good enough for Whisper, which is robust to small rate
+ * differences. Imported 44.1 kHz files now decode correctly (F1).
  */
 @Singleton
 class MediaCodecPcmDecoder @Inject constructor() : PcmDecoder {
@@ -30,10 +30,6 @@ class MediaCodecPcmDecoder @Inject constructor() : PcmDecoder {
             val sourceFormat = extractor.getTrackFormat(trackIndex)
 
             val sourceRate = sourceFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-            check(sourceRate == targetSampleRateHz) {
-                "Sample-rate conversion $sourceRate Hz -> $targetSampleRateHz Hz not implemented"
-            }
-
             val channelCount = sourceFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
             extractor.selectTrack(trackIndex)
 
@@ -54,10 +50,36 @@ class MediaCodecPcmDecoder @Inject constructor() : PcmDecoder {
             decoder.stop()
             decoder.release()
 
-            return toMonoPcm16(pcmBytes, channelCount)
+            val mono = toMonoPcm16(pcmBytes, channelCount)
+            return if (sourceRate == targetSampleRateHz) {
+                mono
+            } else {
+                resample(mono, sourceRate, targetSampleRateHz)
+            }
         } finally {
             extractor.release()
         }
+    }
+
+    /**
+     * Linear-interpolation resampler from [inputRate] to [outputRate] Hz.
+     * Acceptable speech quality; whisper.cpp/sherpa-onnx tolerate small rate
+     * error, and it's far cheaper than a polyphase/sinc filter for MVP 1.
+     */
+    private fun resample(input: ShortArray, inputRate: Int, outputRate: Int): ShortArray {
+        if (inputRate == outputRate) return input
+        val ratio = outputRate.toDouble() / inputRate.toDouble()
+        val out = ShortArray((input.size * ratio).toInt().coerceAtLeast(1))
+        for (i in out.indices) {
+            val pos = i / ratio
+            val idx = pos.toInt().coerceIn(0, input.lastIndex)
+            val next = (idx + 1).coerceAtMost(input.lastIndex)
+            val frac = (pos - idx).toFloat()
+            val s0 = input[idx].toInt()
+            val s1 = input[next].toInt()
+            out[i] = (s0 + ((s1 - s0) * frac).toInt()).toShort()
+        }
+        return out
     }
 
     private fun findAudioTrack(extractor: MediaExtractor): Int {

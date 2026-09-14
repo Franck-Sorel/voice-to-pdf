@@ -2,7 +2,7 @@
 # Toolchain
 agp = "9.4.0"
 gradle = "9.7.1"
-kotlin = "2.3.21"
+kotlin = "2.4.20"
 ksp = "2.3.11"
 hilt = "2.60.1"
 hiltNavigationCompose = "1.4.0"

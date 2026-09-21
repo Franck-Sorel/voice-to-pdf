@@ -1,0 +1,75 @@
+name: Firebase Test Lab (physical arm64)
+
+# Runs the on-device instrumented smoke test (docs/TESTING.md) against real
+# arm64 Pixel hardware. Our APK is arm64-v8a-only, so an x86_64 CI emulator
+# cannot install it — physical devices are the correct target.
+#
+# Enable it (one time) — see docs/SETUP.md §8 "Firebase Test Lab (CI device
+# tests)":
+#   1. Create a Firebase/GCP project and enable Firebase Test Lab.
+#   2. Create a service account, grant it Firebase Test Lab Admin (+ your own
+#      results bucket role, or project Editor for the default bucket).
+#   3. Add repo secrets:
+#        FIREBASE_SERVICE_ACCOUNT  -> service-account JSON (base64 or raw)
+#        FIREBASE_PROJECT_ID       -> your Firebase project id
+#        FIREBASE_RESULTS_BUCKET   -> (optional) your own GCS results bucket
+#   The whole job is a NO-OP (skipped, not failed) when the secrets are
+#   absent, so forks without Firebase stay green.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firebase-test-lab:
+    if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' && secrets.FIREBASE_PROJECT_ID != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive   # whisper.cpp
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build app + instrumented test APKs
+        run: ./gradlew assembleDebug assembleAndroidTest
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ secrets.FIREBASE_PROJECT_ID }}
+
+      - name: Run instrumentation tests on physical arm64 devices
+        # gcloud returns a non-zero exit code on any failed/inconclusive run,
+        # which fails the job.
+        run: |
+          BUCKET_FLAG=""
+          if [ -n "${{ secrets.FIREBASE_RESULTS_BUCKET }}" ]; then
+            BUCKET_FLAG="--results-bucket=${{ secrets.FIREBASE_RESULTS_BUCKET }}"
+          fi
+          gcloud firebase test android run \
+            --type instrumentation \
+            --app app/build/outputs/apk/debug/app-debug.apk \
+            --test app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
+            --device model=shiba,version=34,locale=en,orientation=portrait \
+            --device model=panther,version=33,locale=en,orientation=portrait \
+            --device model=oriole,version=33,locale=en,orientation=portrait \
+            ${BUCKET_FLAG} \
+            --results-dir=testlab/${{ github.run_id }} \
+            --results-history-name="STT-app CI" \
+            --timeout 20m

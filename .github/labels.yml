@@ -1,0 +1,33 @@
+# Custom labels, synced by .github/workflows/labels.yml.
+#
+# GitHub ships these built-ins (we DON'T redefine them and sync with
+# `prune: false` so they are never deleted):
+#   accessibility, bug, documentation, duplicate, enhancement,
+#   good first issue, help wanted, invalid, question, wontfix.
+- name: MVP 1
+  color: 0e8a16
+  description: Milestone MVP 1 scope (offline note -> PDF)
+- name: MVP 2
+  color: 1d76db
+  description: Milestone MVP 2 scope (AI structuring)
+- name: MVP 3
+  color: b60205
+  description: Milestone MVP 3 scope (voice agent)
+- name: ci
+  color: fbca04
+  description: CI / GitHub Actions / workflows
+- name: kotlin
+  color: c5def5
+  description: Kotlin code
+- name: android
+  color: 0e8a16
+  description: Android platform / build
+- name: stt
+  color: 5319e7
+  description: Speech-to-text / whisper.cpp
+- name: pdf
+  color: d73a4a
+  description: PDF export
+- name: needs-triage
+  color: 5319e7
+  description: Needs maintainer triage

@@ -49,12 +49,13 @@ Guidelines: no Android framework, no Robolectric for pure code, use
 | Compose UI | record button state changes; sessions list renders; edit field saves |
 
 **Running them in CI.** Our APK is **`arm64-v8a`-only** (release size), so a
-standard x86_64 GitHub-hosted emulator **cannot install it**. The
-GitHub-hosted `ci.yml` therefore runs JVM tests + lint only; device/instrumented
-tests are run against **Firebase Test Lab `physical` (arm64) devices** — e.g. a
-`Robo` smoke test or `connectedDebugAndroidTest` relayed there (free Spark tier:
-5 physical runs/day). This keeps real-device coverage without an emulator-ABI
-mismatch. See `docs/SETUP.md` for enabling Firebase at some point.
+standard x86_64 GitHub-hosted emulator **cannot install it**. Real-device
+coverage runs via **`.github/workflows/firebase-test-lab.yml`**, which pushes
+`assembleDebug` + `assembleAndroidTest` to **Firebase Test Lab physical
+(arm64)** Pixels (Pixel 6/7/8) and fails the job on any failing execution.
+The job is a **no-op (skipped)** when the Firebase secrets aren't configured,
+so forks without a project stay green. To enable it, see
+`docs/SETUP.md §8`. (Free Spark tier: ~5 physical runs/day.)
 
 ## 5. Manual test matrix (every release)
 

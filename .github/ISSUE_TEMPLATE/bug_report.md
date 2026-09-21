@@ -1,3 +1,10 @@
+---
+name: Bug report
+about: Report a problem so we can fix it
+title: ""
+labels: ["bug"]
+---
+
 ## Why
 
 <!-- What is the bug, and why should it be fixed? -->

@@ -151,8 +151,14 @@ GitHub Actions workflows under `.github/workflows/`:
 | `dependency-review.yml` | every PR | fails on high-severity dependency advisories |
 | `codeql.yml` | push / PR / weekly | CodeQL SAST for C/C++ + Kotlin |
 | `pr-title.yml` | every PR | enforces Conventional Commits titles |
+| `firebase-test-lab.yml` | push / PR / manual | runs the instrumented test on **physical arm64** Firebase Test Lab Pixels (no-op without secrets) |
+| `labels.yml` | push to `main` | syncs labels from `.github/labels.yml` |
+| `pr-labeler.yml` | every PR | auto-labels PRs by changed paths |
+| `issue-triage.yml` | every opened issue | adds `needs-triage` |
+| `good-first-issue.yml` | issue labeled `good first issue` | post onboarding welcome + "claim this issue" |
 
 Dependency bumps are proposed by **Dependabot** (`.github/dependabot.yml`).
+Issue/PR templates auto-apply labels (`bug`, `enhancement`).
 
 ---
 

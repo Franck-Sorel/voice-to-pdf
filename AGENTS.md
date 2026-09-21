@@ -36,7 +36,9 @@ bash ml/setup-whisper.sh --models        # fetch whisper.cpp submodule + GGML mo
 
 > Gotcha: the APK is **arm64-v8a-only**. A standard x86_64 CI emulator can't
 > install it; device tests run on arm64 hardware / Firebase Test Lab physical
-> devices (`docs/TESTING.md`).
+> devices (`docs/TESTING.md`). On-CI device tests live in
+> `.github/workflows/firebase-test-lab.yml` — a no-op unless the
+> `FIREBASE_*` secrets are set (see `docs/SETUP.md §8`).
 
 ## Repo map (you are here)
 

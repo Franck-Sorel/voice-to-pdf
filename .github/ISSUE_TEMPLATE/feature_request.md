@@ -1,3 +1,10 @@
+---
+name: Feature request
+about: Suggest an idea for this project
+title: ""
+labels: ["enhancement"]
+---
+
 ## Problem / motivation
 
 <!-- What need does this address? (Product-focused; tie to PRD if possible) -->

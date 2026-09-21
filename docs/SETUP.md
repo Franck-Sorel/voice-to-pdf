@@ -72,9 +72,9 @@ scaffolded. One time:
    `arm64-v8a`. Building locally: `./gradlew assembleDebug`.
 3. First launch copies the model from `assets` to `filesDir/models/`
    (`WhisperTranscriber.resolveModelFile` handles the copy).
-4. For CI, no extra step — the submodule is fetched automatically by
-   `actions/checkout` with `submodules: recursive` (see `.github/workflows/ci.yml`).
 4. Verify with `./gradlew assembleDebug`.
+5. For CI, no extra step — the submodule is fetched automatically by
+   `actions/checkout` with `submodules: recursive` (see `.github/workflows/ci.yml`).
 
 Until steps 1–2 are done, tapping "Start recording → Stop" runs the pipeline
 but fails at the STT step — expected; see `docs/ROADMAP.md` M1.
@@ -97,4 +97,34 @@ must be ≤ 100 MB or the release CI job fails. Bundle `ggml-base-q8_0.bin`
 ## 7. CI
 
 `.github/workflows/ci.yml` runs lint, unit tests, and `assembleDebug` on every
-push/PR. See `docs/TESTING.md` for the full gate table.
+push/PR. See `docs/TESTING.md` for the full gate table. Also present:
+`codeql.yml`, `dependency-review.yml`, `pr-title.yml`, `labels.yml`,
+`pr-labeler.yml`, `issue-triage.yml`, `good-first-issue.yml`, and
+`firebase-test-lab.yml`.
+
+## 8. Firebase Test Lab (CI device tests)
+
+`firebase-test-lab.yml` runs the on-device instrumented smoke test on real
+**physical arm64** Pixel hardware (our APK is arm64-only). The job is skipped
+unless the secrets are set, so a fork with no Firebase stays green.
+
+Enable it once:
+
+1. Create a **Firebase/GCP project** and enable **Firebase Test Lab**
+   (Firebase console → Test Lab → first-run onboarding).
+2. **IAM & Admin → Service Accounts** → create a service account, download its
+   **JSON key**.
+3. Grant it a role so it can run tests:
+   - Least-privilege with your own results bucket: `Cloud Test Lab Admin`
+     (`roles/cloudtestservice.testAdmin`) + `Firebase Analytics Viewer` and
+     object-creator on the bucket, **or**
+   - Simplest: project **Editor** (`roles/editor`) if you use the default
+     results bucket.
+4. Add **repository secrets** (Settings → Secrets and variables → Actions):
+   - `FIREBASE_SERVICE_ACCOUNT` — the service-account JSON (base64 or raw)
+   - `FIREBASE_PROJECT_ID` — your Firebase project id
+   - `FIREBASE_RESULTS_BUCKET` *(optional)* — your own GCS results bucket
+5. Push to `main` (or click **Run workflow** → `Firebase Test Lab`) — the job
+   builds the APK + test APK, runs them on `shiba` (Pixel 8), `panther`
+   (Pixel 7) and `oriole` (Pixel 6), and fails if any execution fails. Results
+   appear in your results bucket and the Firebase console.

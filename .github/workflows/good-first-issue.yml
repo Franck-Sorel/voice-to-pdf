@@ -1,0 +1,35 @@
+name: Good First Issue Welcome
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+
+jobs:
+  welcome:
+    if: github.event.label.name == 'good first issue'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post onboarding comment
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const repo = context.repo;
+            const body = [
+              '👋 Thanks for picking up a **good first issue**!',
+              '',
+              'Before you start, please read:',
+              `- 📖 [docs/ONBOARDING.md](https://github.com/${repo.owner}/${repo.repo}/blob/main/docs/ONBOARDING.md) — where the project stands + how to set up`,
+              `- 🗺️ [docs/ROADMAP.md](https://github.com/${repo.owner}/${repo.repo}/blob/main/docs/ROADMAP.md) — milestones`,
+              '',
+              'To **claim** this issue, comment **"I\'d like to work on this"** and a maintainer will assign it to you.',
+              'Questions? Ask them here — everyone is welcome.',
+            ].join('\n');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: repo.owner,
+              repo: repo.repo,
+              body: body
+            })

@@ -47,8 +47,12 @@ jobs:
           submodules: recursive
       - uses: gradle/wrapper-validation-action@v3
       - uses: ./.github/actions/android-toolchain
-      - name: Build debug + release APKs
-        run: ./gradlew assembleDebug assembleRelease --warning-mode=fail
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --warning-mode=fail
+      - name: Build release APK
+        # Separate invocation on purpose: running both variants in one Gradle
+        # build races on the Room schema export file (kspDebug/kspRelease).
+        run: ./gradlew assembleRelease --warning-mode=fail
       - name: Native lib + ABI audit
         run: |
           APK=$(ls app/build/outputs/apk/release/*.apk | head -n1)

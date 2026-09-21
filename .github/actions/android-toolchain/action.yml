@@ -11,10 +11,15 @@ runs:
 
     - uses: android-actions/setup-android@v4
 
-    - name: Install pinned NDK + CMake
+    - name: Install pinned SDK platform, build-tools, NDK, CMake
       shell: bash
       run: |
-        sdkmanager --install "ndk;28.2.13676358" "cmake;3.22.1" >/dev/null || true
+        sdkmanager --install \
+          "platform-tools" \
+          "platforms;android-37" \
+          "build-tools;37.0.0" \
+          "ndk;28.2.13676358" \
+          "cmake;3.22.1" >/dev/null || true
         sdkmanager --licenses >/dev/null 2>&1 || true
 
     - uses: actions/cache@v6

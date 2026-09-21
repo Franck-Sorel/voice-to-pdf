@@ -155,7 +155,7 @@ artifact is trustworthy. GitHub Actions workflows under `.github/workflows/`:
 | `action-pin.yml` | every push / PR | every `uses:` pinned to `@vMajor`/SHA (no `@main`/`@latest`) |
 | `codeql.yml` | push / PR / weekly | CodeQL SAST on Kotlin/Java (C++ excluded — NDK not traceable) |
 | `dependency-review.yml` | every PR | fails on high-severity dependency advisories |
-| `firebase-test-lab.yml` | push / PR / manual | on-device test on **physical arm64** Firebase Test Lab Pixels (no-op unless `RUN_FIREBASE=true`) |
+| `firebase-test-lab.yml` | push / PR / manual | on-device test on **physical arm64** Firebase Test Lab Pixels (no-op unless `RUN_FIREBASE=true` **and** Firebase secrets configured — deferred; see `docs/SETUP.md §8`) |
 | `pr-title.yml` | every PR | enforces Conventional Commits titles |
 | `pr-labeler.yml` / `labels.yml` | PR / push | path labels + label sync |
 | `issue-triage.yml` / `good-first-issue.yml` | issues | `needs-triage` + onboarding welcome |

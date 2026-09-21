@@ -30,7 +30,9 @@ val releaseVersionCode: Int =
 
 android {
     namespace = "com.sttapp"
-    compileSdk = 36
+    // The pinned 2026-stable dependencies require a newer compileSdk than 36.
+    // AGP 9.4 supports up to 37; keep in sync with the toolchain action.
+    compileSdk = 37
 
     // Pinned to AGP 9.4's default NDK so CI/local builds are reproducible.
     ndkVersion = "28.2.13676358"
@@ -38,7 +40,7 @@ android {
     defaultConfig {
         applicationId = "com.sttapp"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = releaseVersionCode
         versionName = releaseVersionName
 

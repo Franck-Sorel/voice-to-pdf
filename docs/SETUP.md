@@ -116,32 +116,45 @@ branches up-to-date, conversation resolution, and the required checks:
 `unit-tests`, `lint`, `assemble`, `repo-integrity`, `docs-integrity`,
 `action-pin`, `dependency-review`, `pr-title`.
 
-## 8. Firebase Test Lab (CI device tests)
+## 8. Firebase Test Lab (CI device tests) — deferred setup guide
 
 `firebase-test-lab.yml` runs the on-device instrumented smoke test on real
-**physical arm64** Pixel hardware (our APK is arm64-only). The job is a **no-op
-unless you enable a repository *variable*** (GitHub can't gate a job on secrets),
-so a fork with no Firebase stays green.
+**physical arm64** Pixel hardware. The job is a **no-op (never fails)** until
+you configure it — you can safely defer and finish this later.
 
-Enable it once:
+> **Cost caveat (important):** since Feb 2026, Firebase Test Lab writes its
+> results to a Google Cloud Storage (GCS) bucket, and **creating a new bucket
+> (including Firebase's default) requires the paid **Blaze** plan (a linked
+> billing account)** — there's no way around it on the free **Spark** plan. So
+> plan to enable this only when you have billing (or can reuse an existing
+> bucket). It is intentionally OFF by default.
 
-1. Create a **Firebase/GCP project** and enable **Firebase Test Lab**
-   (Firebase console → Test Lab → first-run onboarding).
+### What to configure (later)
+
+1. **Firebase/GCP project** → enable **Firebase Test Lab** (onboarding).
 2. **IAM & Admin → Service Accounts** → create a service account, download its
    **JSON key**.
-3. Grant it a role so it can run tests:
-   - Least-privilege with your own results bucket: `Cloud Test Lab Admin`
-     (`roles/cloudtestservice.testAdmin`) + `Firebase Analytics Viewer` and
-     object-creator on the bucket, **or**
-   - Simplest: project **Editor** (`roles/editor`) if you use the default
-     results bucket.
-4. Add **repository secrets** (Settings → Secrets and variables → Actions):
-   - `FIREBASE_SERVICE_ACCOUNT` — the service-account JSON (base64 or raw)
-   - `FIREBASE_PROJECT_ID` — your Firebase project id
-   - `FIREBASE_RESULTS_BUCKET` *(optional)* — your own GCS results bucket
-5. Add a **repository variable** `RUN_FIREBASE=true` (Settings → Secrets and
-   variables → Actions → Variables).
-6. Push to `main` (or click **Run workflow** → `Firebase Test Lab`) — the job
-   builds the APK + test APK, runs them on `shiba` (Pixel 8), `panther`
-   (Pixel 7) and `oriole` (Pixel 6), and fails if any execution fails. Results
-   appear in your results bucket and the Firebase console.
+3. **Least-privilege roles** on that service account:
+   - `Cloud Test Lab Admin` (`roles/cloudtestservice.testAdmin`)
+   - `Firebase Analytics Viewer` (`roles/firebase.analyticsViewer`)
+   - object creator on the results bucket (needed to write results)
+   - *(or, simpler but broader: project `Editor` if using the default bucket)*
+4. **Secrets** (Settings → Secrets and variables → Actions):
+   - `FIREBASE_SERVICE_ACCOUNT` — the service-account **JSON, raw** (do **NOT**
+     base64-encode it; our `google-github-actions/auth@v3` reads raw JSON).
+   - `FIREBASE_PROJECT_ID` — your Firebase project id.
+   - `FIREBASE_RESULTS_BUCKET` — your GCS bucket (required once you're on Blaze).
+5. **Repository Variable** (Settings → Secrets and variables → Actions →
+   Variables): `RUN_FIREBASE = true`.
+
+> The job only fires when **`RUN_FIREBASE=true` AND** `FIREBASE_SERVICE_ACCOUNT`
+> and `FIREBASE_PROJECT_ID` are set — so leaving the variable present without
+> the secrets still stays green (it prints "skipping"), and forks are green too.
+
+Trigger: push to `main`, or **Run workflow → Firebase Test Lab**. It runs on
+`shiba` (Pixel 8), `panther` (Pixel 7) and `oriole` (Pixel 6); any failed
+execution fails the job. Results appear in your bucket / Firebase console.
+
+**Security:** the JSON is a secret — paste it **only** into the
+`FIREBASE_SERVICE_ACCOUNT` field, never into an issue, commit, or chat. The
+`repo-integrity` workflow also greps for accidentally-committed key files.

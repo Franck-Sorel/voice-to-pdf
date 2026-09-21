@@ -89,9 +89,22 @@ docs/             # PRD, ARCHITECTURE, DECISIONS(ADRs), NFR, TESTING, ROADMAP, S
   don't "improve" these without a new superseding ADR). Record new decisions as
   a new ADR.
 
-## Where to look for decisions & progress
+## CI & releases (workflows are the source of reliability)
 
-- Requirements: `docs/PRD.md` (feature IDs like F2 = transcription)
+- A green run = trustworthy artifact. Required checks: `unit-tests`, `lint`,
+  `assemble`, `repo-integrity`, `docs-integrity`, `action-pin`,
+  `dependency-review`, `pr-title`.
+- **Never use `secrets` in an `if:`** (GitHub forbids it). Gate jobs on
+  `vars.X == 'true'`, steps on `env.X`. This already bit us once (0s failures).
+- Version comes from the **git tag** at release: `release.yml` reads
+  `v1.2.3` → `-PversionName=1.2.3 -PversionCode=10203`. Local builds still
+  work (defaults in `app/build.gradle.kts`).
+- Release is self-contained: `build-signed` re-downloads the model, builds the
+  signed APK, `apksigner`-verifies, checks ≤100 MB + arm64-only + bundled
+  model, computes SHA-256, and publishes a DRAFT release. `workflow_dispatch`
+  is a dry-run (builds + verifies, no publish).
+
+## Where to look for decisions & progress- Requirements: `docs/PRD.md` (feature IDs like F2 = transcription)
 - Why we chose the stack: `docs/DECISIONS.md` (ADRs)
 - Architecture & agent design: `docs/ARCHITECTURE.md`
 - Non-functional targets + measurement: `docs/NFR.md`

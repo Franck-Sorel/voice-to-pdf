@@ -1,21 +1,14 @@
 name: Firebase Test Lab (physical arm64)
 
-# Runs the on-device instrumented smoke test (docs/TESTING.md) against real
-# arm64 Pixel hardware. Our APK is arm64-v8a-only, so an x86_64 CI emulator
-# cannot install it — physical devices are the correct target.
+# Runs on-device instrumented tests on real arm64 Pixel hardware (our APK is
+# arm64-v8a-only; an x86_64 CI emulator cannot install it — see docs/TESTING.md).
 #
-# Enable it (one time) — see docs/SETUP.md §8 "Firebase Test Lab (CI device
-# tests)":
-#   1. Create a Firebase/GCP project and enable Firebase Test Lab.
-#   2. Create a service account, grant it Firebase Test Lab Admin (+ your own
-#      results bucket role, or project Editor for the default bucket).
-#   3. Add repo secrets:
-#        FIREBASE_SERVICE_ACCOUNT  -> service-account JSON (base64 or raw)
-#        FIREBASE_PROJECT_ID       -> your Firebase project id
-#        FIREBASE_RESULTS_BUCKET   -> (optional) your own GCS results bucket
-#   The whole job is a NO-OP (skipped, not failed) when the secrets are
-#   absent, so forks without Firebase stay green.
-
+# This job is a NO-OP (skipped) unless the maintainer enables it by setting
+# the repository VARIABLE  RUN_FIREBASE=true  plus the secrets below, so a
+# fork without Firebase stays green.
+#   Secrets: FIREBASE_SERVICE_ACCOUNT (JSON), FIREBASE_PROJECT_ID,
+#            FIREBASE_RESULTS_BUCKET (optional)
+# Enable steps: docs/SETUP.md §8.
 on:
   push:
     branches: [main]
@@ -25,27 +18,27 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: firebase-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   firebase-test-lab:
-    if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' && secrets.FIREBASE_PROJECT_ID != '' }}
+    if: vars.RUN_FIREBASE == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
-          submodules: recursive   # whisper.cpp
+          submodules: recursive
 
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: ./.github/actions/android-toolchain
 
       - name: Build app + instrumented test APKs
-        run: ./gradlew assembleDebug assembleAndroidTest
+        run: ./gradlew assembleDebug assembleAndroidTest --warning-mode=fail
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
@@ -55,13 +48,14 @@ jobs:
           project_id: ${{ secrets.FIREBASE_PROJECT_ID }}
 
       - name: Run instrumentation tests on physical arm64 devices
-        # gcloud returns a non-zero exit code on any failed/inconclusive run,
-        # which fails the job.
+        env:
+          RESULTS_BUCKET: ${{ secrets.FIREBASE_RESULTS_BUCKET }}
         run: |
           BUCKET_FLAG=""
-          if [ -n "${{ secrets.FIREBASE_RESULTS_BUCKET }}" ]; then
-            BUCKET_FLAG="--results-bucket=${{ secrets.FIREBASE_RESULTS_BUCKET }}"
+          if [ -n "$RESULTS_BUCKET" ]; then
+            BUCKET_FLAG="--results-bucket=$RESULTS_BUCKET"
           fi
+          # gcloud returns a non-zero exit code on any failed/inconclusive run.
           gcloud firebase test android run \
             --type instrumentation \
             --app app/build/outputs/apk/debug/app-debug.apk \

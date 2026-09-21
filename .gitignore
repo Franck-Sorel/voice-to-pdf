@@ -12,6 +12,12 @@ local.properties
 *.class
 app/build/
 
+# Downloaded ML models (fetched via ml/download-models.sh; never committed)
+app/src/main/assets/models/
+
+# ML runtime build output
+app/src/main/cpp/whisper.cpp-build/
+
 # IDE
 .idea/
 *.iml

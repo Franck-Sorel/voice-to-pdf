@@ -1,0 +1,63 @@
+name: Docs integrity
+
+# Docs are the project's contract (AGENTS, CONTRIBUTING, README, docs/*).
+# Keep internal links working and README claims honest so contributors and
+# agents make correct decisions. Low false-positive by design.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-integrity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Internal .md links resolve
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+          md = []
+          for root, dirs, files in os.walk('.'):
+            if '.git' in root or 'whisper.cpp' in root:
+              continue
+            md += [os.path.join(root, f) for f in files if f.endswith('.md')]
+          bad = 0
+          re_link = re.compile(r'\]\(([^)#\s]+)(?:#[^)\s]*)?\)')
+          for path in md:
+            with open(path, encoding='utf-8') as fh:
+              text = fh.read()
+            base = os.path.dirname(path)
+            for m in re_link.finditer(text):
+              target = m.group(1)
+              if re.match(r'^[a-z]+:', target):      # http(s):, mailto:, ...
+                continue
+              resolved = os.path.normpath(os.path.join(base, target))
+              if not os.path.exists(resolved):
+                print(f"::error::{path}: broken link '{target}'")
+                bad = 1
+          sys.exit(bad)
+          PY
+
+      - name: README CI table matches actual workflows
+        run: |
+          actual=$(ls .github/workflows/*.yml | xargs -n1 basename)
+          echo "Actual workflows:"; echo "$actual"
+          while IFS= read -r wf; do
+            name="${wf%.yml}"
+            if ! grep -Fq "| \`${name}\`" README.md; then
+              echo "::warning::workflow $name not listed in README CI table"
+            fi
+          done <<< "$actual"

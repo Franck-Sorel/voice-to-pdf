@@ -1,0 +1,49 @@
+name: Action pinning (supply chain)
+
+# Supply-chain guard: every `uses:` in our workflows must be pinned to a
+# stable MAJOR tag (`@vN`) or a full commit SHA. We FAIL on loose refs
+# (`@main`, `@master`, `@develop`, `@latest`), which can be force-pushed to
+# inject code into the build that produces the shipped artifact.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: action-pin-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  action-pin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check action references
+        run: |
+          bad=0
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            while read -r line; do
+              # normalize: strip quotes, single-quote, and any `with`/comment tail
+              line="${line%%\#*}"
+              case "$line" in
+                *'uses:'*)
+                  ref="${line#*uses:}"; ref="${ref#\"}"; ref="${ref#\'}"; ref="${ref%%\"*}"; ref="${ref%%\'*}"
+                  ref="$(echo "$ref" | xargs)"
+                  [ -z "$ref" ] && continue
+                  pin="${ref##*@}"
+                  case "$pin" in
+                    main|master|develop|latest)
+                      echo "::error::$f: unsafe loose ref '$ref' (pin @vMajor or a full SHA)"
+                      bad=1 ;;
+                  esac
+                  ;;
+              esac
+            done < "$f"
+          done <<< "$(git ls-files '.github/workflows/*.yml')"
+          exit $bad

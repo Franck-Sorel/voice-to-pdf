@@ -9,9 +9,14 @@ on:
 permissions:
   issues: write
 
+concurrency:
+  group: sync-labels
+  cancel-in-progress: true
+
 jobs:
   labels:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 

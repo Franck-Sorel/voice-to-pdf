@@ -1,0 +1,99 @@
+name: Repo integrity
+
+# Cheap, deterministic static invariants that protect the shipped artifact on
+# every change. If these pass, the build input is safe to proceed — and a
+# release is trustworthy (see release.yml). Never relies on secrets in `if`.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repo-integrity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repo-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: No leaked secrets / keystores
+        run: |
+          bad=0
+          while IFS= read -r f; do [ -z "$f" ] || { echo "::error::forbidden tracked file: $f"; bad=1; }; done < <(git ls-files | grep -E '\.(jks|keystore)$|(^|/)keystore\.properties$|(^|/)\.env$|(^|/)secrets\.properties$' || true)
+          if git ls-files | grep -qE '\.jks$|\.keystore$'; then echo "::error::a keystore is tracked"; bad=1; fi
+          exit $bad
+
+      - name: Validate Gradle wrapper (supply-chain)
+        uses: gradle/wrapper-validation-action@v3
+
+      - name: core/ stays Android-free
+        run: |
+          if grep -rnE '^\s*import\s+android\.' app/src/main/java/com/sttapp/core/ 2>/dev/null; then
+            echo "::error::core/ must not import android.*"
+            exit 1
+          fi
+
+      - name: No kapt (uses KSP with AGP built-in Kotlin)
+        run: |
+          if grep -rnE '\bkapt\b' app/ build.gradle.kts settings.gradle.kts 2>/dev/null; then
+            echo "::error::kapt is not supported here"
+            exit 1
+          fi
+
+      - name: No network client in the default path (offline-first)
+        run: |
+          if grep -rnE 'okhttp|retrofit|HttpURLConnection|java\.net\.URL|\bWebView\b|\bSocket\b' \
+            app/src/main/java/com/sttapp/core app/src/main/java/com/sttapp/data 2>/dev/null; then
+            echo "::error::network client found in offline default path"
+            exit 1
+          fi
+
+      - name: Manifest permission audit
+        run: |
+          perms=$(sed -n 's/.*android:name="android.permission.\([A-Z_]*\)".*/\1/p' app/src/main/AndroidManifest.xml | tr '\n' ' ')
+          echo "permissions: $perms"
+          for p in $perms; do
+            case "$p" in
+              RECORD_AUDIO|INTERNET) ;;
+              *) echo "::error::unexpected permission $p"; exit 1 ;;
+            esac
+          done
+
+      - name: arm64-only ABI + model size (static)
+        run: |
+          if ! grep -q 'arm64-v8a' app/build.gradle.kts || grep -qE 'x86_64|armeabi-v7a' app/build.gradle.kts; then
+            echo "::error::release ABI must be arm64-v8a only"
+            exit 1
+          fi
+          model=app/src/main/assets/models/ggml-base-q8_0.bin
+          if [ -f "$model" ]; then
+            size=$(stat -c%s "$model")
+            echo "model size: $size"
+            if [ "$size" -lt 78000000 ] || [ "$size" -gt 86000000 ]; then
+              echo "::error::ggml-base-q8_0.bin size unexpected ($size)"
+              exit 1
+            fi
+          else
+            echo "::warning::model not bundled yet (expected until M1)"
+          fi
+
+      - name: No tracked .md deletions (docs are the contract)
+        if: github.event_name == 'pull_request'
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          if [ -n "$base" ]; then
+            deleted=$(git diff --name-status "$base" "$GITHUB_SHA" -- . | grep -E '^D\s.*\.md$' || true)
+            if [ -n "$deleted" ]; then
+              echo "::error::deleted markdown files:$deleted"
+              exit 1
+            fi
+          fi

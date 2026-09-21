@@ -143,19 +143,22 @@ Prerequisites: **JDK 17**, an Android SDK (Android Studio Ladybug+ recommended).
 
 ## CI/CD & hygiene
 
-GitHub Actions workflows under `.github/workflows/`:
+The pipeline is the project's **source of reliability**: a green run means the
+artifact is trustworthy. GitHub Actions workflows under `.github/workflows/`:
 
 | Workflow | Runs | Purpose |
 |----------|------|---------|
-| `ci.yml` | every push / PR / `v*` tag / manual | lint, unit tests, debug + signed release build, **100 MB size gate**, **`apksigner` signature verify**, publish signed APK to GitHub Releases (arm64, for Obtainium). Least-privilege permissions + Gradle cache + wrapper validation. |
+| `ci.yml` | every push / PR / manual | unit tests, lint (warnings-as-errors), debug+release build with **native + ABI audit** |
+| `release.yml` | `v*` tag / manual dry-run | tag-derived version, **signed** APK, **`apksigner` verify**, **≤100 MB** + ABI/model audit, **SHA-256** checksums, publish **draft** GitHub Release (arm64, for Obtainium) |
+| `repo-integrity.yml` | every push / PR | secrets/keystore scan, wrapper validation, core-purity, no-kapt, offline/ABI/model invariants, no `.md` deletion |
+| `docs.yml` | every push / PR | internal markdown links resolve; README CI table matches workflows |
+| `action-pin.yml` | every push / PR | every `uses:` pinned to `@vMajor`/SHA (no `@main`/`@latest`) |
+| `codeql.yml` | push / PR / weekly | CodeQL SAST on Kotlin/Java (C++ excluded — NDK not traceable) |
 | `dependency-review.yml` | every PR | fails on high-severity dependency advisories |
-| `codeql.yml` | push / PR / weekly | CodeQL SAST for C/C++ + Kotlin |
+| `firebase-test-lab.yml` | push / PR / manual | on-device test on **physical arm64** Firebase Test Lab Pixels (no-op unless `RUN_FIREBASE=true`) |
 | `pr-title.yml` | every PR | enforces Conventional Commits titles |
-| `firebase-test-lab.yml` | push / PR / manual | runs the instrumented test on **physical arm64** Firebase Test Lab Pixels (no-op without secrets) |
-| `labels.yml` | push to `main` | syncs labels from `.github/labels.yml` |
-| `pr-labeler.yml` | every PR | auto-labels PRs by changed paths |
-| `issue-triage.yml` | every opened issue | adds `needs-triage` |
-| `good-first-issue.yml` | issue labeled `good first issue` | post onboarding welcome + "claim this issue" |
+| `pr-labeler.yml` / `labels.yml` | PR / push | path labels + label sync |
+| `issue-triage.yml` / `good-first-issue.yml` | issues | `needs-triage` + onboarding welcome |
 
 Dependency bumps are proposed by **Dependabot** (`.github/dependabot.yml`).
 Issue/PR templates auto-apply labels (`bug`, `enhancement`).

@@ -96,17 +96,32 @@ must be ≤ 100 MB or the release CI job fails. Bundle `ggml-base-q8_0.bin`
 
 ## 7. CI
 
-`.github/workflows/ci.yml` runs lint, unit tests, and `assembleDebug` on every
-push/PR. See `docs/TESTING.md` for the full gate table. Also present:
-`codeql.yml`, `dependency-review.yml`, `pr-title.yml`, `labels.yml`,
-`pr-labeler.yml`, `issue-triage.yml`, `good-first-issue.yml`, and
-`firebase-test-lab.yml`.
+The pipeline is the project's **source of reliability** — a green run means the
+artifact is trustworthy. `.github/workflows/`:
+
+| Workflow | Purpose |
+|----------|---------|
+| `ci.yml` | unit tests, lint (warnings-as-errors), debug+release builds with native + ABI audit |
+| `repo-integrity.yml` | secrets/keystore scan, wrapper validation, core-purity, no-kapt, offline/ABI/model invariants, no `.md` deletion |
+| `docs.yml` | internal markdown links resolve; README CI table matches workflows |
+| `action-pin.yml` | every `uses:` pinned to `@vMajor` or SHA (no `@main`/`@latest`) |
+| `codeql.yml` | SAST on Kotlin/Java (C++ excluded — NDK not traceable) |
+| `dependency-review.yml` | fails on high-severity dependency advisories |
+| `release.yml` | tag `v*` → tag-derived version, signed APK, apksigner verify, ≤100 MB, ABI/model/checksum audit, DRAFT GitHub Release; `workflow_dispatch` = dry-run (build+verify, no publish) |
+| `firebase-test-lab.yml` | on-device tests on physical arm64 Pixels (gated) |
+| `pr-title.yml`, `pr-labeler.yml`, `issue-triage.yml`, `labels.yml`, `good-first-issue.yml` | hygiene |
+
+**Recommended branch protection on `main`** (Settings → Branches): require a PR,
+branches up-to-date, conversation resolution, and the required checks:
+`unit-tests`, `lint`, `assemble`, `repo-integrity`, `docs-integrity`,
+`action-pin`, `dependency-review`, `pr-title`.
 
 ## 8. Firebase Test Lab (CI device tests)
 
 `firebase-test-lab.yml` runs the on-device instrumented smoke test on real
-**physical arm64** Pixel hardware (our APK is arm64-only). The job is skipped
-unless the secrets are set, so a fork with no Firebase stays green.
+**physical arm64** Pixel hardware (our APK is arm64-only). The job is a **no-op
+unless you enable a repository *variable*** (GitHub can't gate a job on secrets),
+so a fork with no Firebase stays green.
 
 Enable it once:
 
@@ -124,7 +139,9 @@ Enable it once:
    - `FIREBASE_SERVICE_ACCOUNT` — the service-account JSON (base64 or raw)
    - `FIREBASE_PROJECT_ID` — your Firebase project id
    - `FIREBASE_RESULTS_BUCKET` *(optional)* — your own GCS results bucket
-5. Push to `main` (or click **Run workflow** → `Firebase Test Lab`) — the job
+5. Add a **repository variable** `RUN_FIREBASE=true` (Settings → Secrets and
+   variables → Actions → Variables).
+6. Push to `main` (or click **Run workflow** → `Firebase Test Lab`) — the job
    builds the APK + test APK, runs them on `shiba` (Pixel 8), `panther`
    (Pixel 7) and `oriole` (Pixel 6), and fails if any execution fails. Results
    appear in your results bucket and the Firebase console.

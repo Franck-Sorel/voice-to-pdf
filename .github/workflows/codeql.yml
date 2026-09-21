@@ -1,5 +1,9 @@
 name: CodeQL
 
+# SAST for our own Kotlin/Java code. NOTE: C/C++ analysis is intentionally
+# excluded — CodeQL's C++ autobuild cannot trace the Gradle/NDK cross-compile
+# for whisper.cpp, so it would fail or produce an empty database (unreliable).
+# whisper.cpp is an upstream submodule; its security surface is out of scope here.
 on:
   push:
     branches: [main]
@@ -9,32 +13,34 @@ on:
 
 permissions:
   contents: read
-  security-events: write   # needed to upload analysis results
+  security-events: write   # upload analysis results
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   analyze:
-    name: Analyze (${{ matrix.language }})
+    name: Analyze (java-kotlin)
     runs-on: ubuntu-latest
     timeout-minutes: 360
-    strategy:
-      fail-fast: false
-      matrix:
-        language: ["c-cpp", "java-kotlin"]
     steps:
-      - name: Checkout (with whisper.cpp submodule)
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
-          languages: ${{ matrix.language }}
+          languages: java-kotlin
+          # Autobuild runs Gradle; it works for JVM/Kotlin extraction. The NDK
+          # build is a harmless side effect.
+          build-mode: autobuild
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@v4
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
-          category: "/language:${{ matrix.language }}"
+          category: "/language:java-kotlin"

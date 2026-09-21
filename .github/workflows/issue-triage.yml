@@ -7,9 +7,14 @@ on:
 permissions:
   issues: write
 
+concurrency:
+  group: issue-triage-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
 jobs:
   triage:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Add needs-triage label to every opened issue
         uses: actions/github-script@v9

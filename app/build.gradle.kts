@@ -20,16 +20,27 @@ fun loadKeystoreProps(): Properties? {
 
 val ksProps: Properties? = loadKeystoreProps()
 
+// Version is injected at release time from the git tag (release.yml):
+//   ./gradlew assembleRelease -PversionName=1.2.3 -PversionCode=10203
+// Local builds fall back to these defaults.
+val releaseVersionName: String =
+    providers.gradleProperty("versionName").getOrElse("0.1.0")
+val releaseVersionCode: Int =
+    providers.gradleProperty("versionCode").map(String::toInt).getOrElse(1)
+
 android {
     namespace = "com.sttapp"
     compileSdk = 36
+
+    // Pinned to AGP 9.4's default NDK so CI/local builds are reproducible.
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "com.sttapp"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -74,6 +85,12 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    lint {
+        // Reliability gate: any lint warning fails the build (CI).
+        warningsAsErrors = true
+        abortOnError = true
     }
 
     packaging {

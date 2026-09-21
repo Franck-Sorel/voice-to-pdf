@@ -100,7 +100,7 @@ class MediaCodecPcmDecoder @Inject constructor() : PcmDecoder {
             if (!inputDone) {
                 val inputIndex = decoder.dequeueInputBuffer(10_000)
                 if (inputIndex >= 0) {
-                    val inputBuffer = decoder.getInputBuffer(inputIndex)
+                    val inputBuffer = decoder.getInputBuffer(inputIndex) ?: break
                     val sampleSize = extractor.readSampleData(inputBuffer, 0)
                     if (sampleSize < 0) {
                         decoder.queueInputBuffer(
@@ -121,7 +121,7 @@ class MediaCodecPcmDecoder @Inject constructor() : PcmDecoder {
                 MediaCodec.INFO_TRY_AGAIN_LATER -> Unit
                 else -> {
                     if (bufferInfo.size > 0) {
-                        val outputBuffer = decoder.getOutputBuffer(outputIndex)
+                        val outputBuffer = decoder.getOutputBuffer(outputIndex) ?: continue
                         outputBuffer.position(bufferInfo.offset)
                         outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
                         val chunk = ByteArray(bufferInfo.size)

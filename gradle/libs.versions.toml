@@ -13,7 +13,7 @@ activityCompose = "1.13.0"
 lifecycle = "2.11.0"
 navigationCompose = "2.10.0"
 room = "2.8.4"
-composeBom = "2026.08.00"
+composeBom = "2026.09.00"
 
 # Kotlinx
 coroutines = "1.11.0"

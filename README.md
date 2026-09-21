@@ -127,6 +127,8 @@ Prerequisites: **JDK 17**, an Android SDK (Android Studio Ladybug+ recommended).
 
 | Doc | What it covers |
 |-----|----------------|
+| [docs/ONBOARDING.md](docs/ONBOARDING.md) | **Start here** — status, repo map, setup, how to contribute |
+| [AGENTS.md](AGENTS.md) | Terse instructions for AI agents / Copilot working in the repo |
 | [docs/PRD.md](docs/PRD.md) | Full product requirements: MVP 1/2/3, scope, priorities, NFRs, success metrics, risks |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, module map, data flow, threading, offline design, agent architecture, diagrams |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture Decision Records (why each choice was made) |

@@ -3,6 +3,10 @@
 Thanks for helping with Voice to PDF. Small repo, big mission: offline
 note-taking for students in low-connectivity regions.
 
+> **New here?** Read [`docs/ONBOARDING.md`](docs/ONBOARDING.md) first — it
+> tells you where the project stands and walks you through setup and your first
+> PR. (If you're an AI agent, the condensed briefing is in [`AGENTS.md`](AGENTS.md).)
+
 ## Ground rules
 
 - Keep the offline-first guarantee: **offline-first app**, networking is only
